@@ -1,0 +1,48 @@
+import { byId, findById } from "../utils/dom";
+
+export const ui = {
+  mainMenu: byId("mainMenu"),
+  menuCards: byId("menuCardHolder"),
+  guideCard: byId("guideCard"),
+  loadingText: byId("loadingText"),
+  enterGameButton: byId("enterGame"),
+  nameInput: byId<HTMLInputElement>("nameInput", "input"),
+  serverBrowser: byId("serverBrowser"),
+  skinColorHolder: byId("skinColorHolder"),
+
+  settingsButton: byId("settingsButton"),
+  allianceButton: byId("allianceButton"),
+  storeButton: byId("storeButton"),
+  chatButton: byId("chatButton"),
+  joinPartyButton: findById("joinPartyButton"),
+  partyButton: findById("partyButton"),
+
+  nativeResolutionToggle: byId<HTMLInputElement>("nativeResolution", "input"),
+  showPingToggle: byId<HTMLInputElement>("showPing", "input"),
+
+  gameUI: byId("gameUI"),
+  actionBar: byId("actionBar"),
+  scoreDisplay: byId("scoreDisplay"),
+  foodDisplay: byId("foodDisplay"),
+  woodDisplay: byId("woodDisplay"),
+  stoneDisplay: byId("stoneDisplay"),
+  killCounter: byId("killCounter"),
+  ageText: byId("ageText"),
+  ageBarBody: byId("ageBarBody"),
+  upgradeHolder: byId("upgradeHolder"),
+  upgradeCounter: byId("upgradeCounter"),
+  itemInfoHolder: byId("itemInfoHolder"),
+  leaderboardData: byId("leaderboardData"),
+  pingDisplay: byId("pingDisplay"),
+  shutdownDisplay: byId("shutdownDisplay"),
+  diedText: byId("diedText"),
+
+  allianceMenu: byId("allianceMenu"),
+  allianceHolder: byId("allianceHolder"),
+  allianceManager: byId("allianceManager"),
+  storeMenu: byId("storeMenu"),
+  storeHolder: byId("storeHolder"),
+  notificationDisplay: byId("noticationDisplay"),
+  chatHolder: byId("chatHolder"),
+  chatBox: byId<HTMLInputElement>("chatBox", "input"),
+};

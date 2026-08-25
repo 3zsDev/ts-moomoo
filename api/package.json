@@ -1,0 +1,11 @@
+{
+  "name": "ts-moomoo-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "moomoo v1.27 api in typescript",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

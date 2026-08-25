@@ -1,0 +1,36 @@
+export interface Cosmetic {
+  id: number;
+  name: string;
+  desc: string;
+  price: number;
+  scale: number;
+  dontSell?: boolean;
+  topSprite?: boolean;
+  xOff?: number;
+  spin?: boolean;
+  spdMult?: number;
+  dmgMult?: number;
+  dmgMultO?: number;
+  dmg?: number;
+  dmgK?: number;
+  healthRegen?: number;
+  healD?: number;
+  atkSpd?: number;
+  bDmg?: number;
+  aMlt?: number;
+  projCost?: number;
+  coldM?: number;
+  watrImm?: boolean;
+  poisonRes?: number;
+  poisonDmg?: number;
+  poisonTime?: number;
+  bullRepel?: number;
+  antiTurret?: number;
+  extraGold?: number;
+  kScrM?: number;
+  goldSteal?: number;
+  pps?: number;
+  noEat?: boolean;
+  invisTimer?: number;
+  turret?: { proj: number; range: number; rate: number };
+}

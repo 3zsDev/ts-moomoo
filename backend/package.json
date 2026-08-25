@@ -1,0 +1,12 @@
+{
+  "name": "ts-moomoo-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "moomoo backend in typescript",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "start": "node dist/server.mjs"
+  }
+}

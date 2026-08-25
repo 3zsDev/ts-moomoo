@@ -1,0 +1,26 @@
+{
+  "name": "ts-moomoo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "moomoo 1.8.2 in typescript",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:game": "node build.mjs --game",
+    "build:ext": "node build.mjs --ext",
+    "watch": "node build.mjs --watch",
+    "serve": "node build.mjs --serve",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p backend/tsconfig.json",
+    "build:backend": "node backend/build.mjs",
+    "build:all": "node build.mjs && node backend/build.mjs",
+    "api": "node api/server.mjs",
+    "backend": "node backend/dist/server.mjs",
+    "play": "node run.mjs",
+    "sandbox": "node run.mjs --sandbox",
+    "ws": "node run.mjs --ws"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "typescript": "^5.8.3"
+  }
+}

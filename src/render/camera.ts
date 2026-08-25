@@ -1,0 +1,32 @@
+import { config } from "../config";
+import { state } from "../game/state";
+import { getDirection, getDistance } from "../utils/geometry";
+import { VIEW_HEIGHT, VIEW_WIDTH } from "./canvas";
+
+export const camera = {
+  left: 0,
+  top: 0,
+};
+
+export function updateCamera(delta: number): void {
+  const me = state.me;
+
+  if (!me) {
+    state.cameraX = config.mapScale / 2;
+    state.cameraY = config.mapScale / 2;
+  } else {
+    const distance = getDistance(state.cameraX, state.cameraY, me.x, me.y);
+    if (distance <= 0.05) {
+      state.cameraX = me.x;
+      state.cameraY = me.y;
+    } else {
+      const angle = getDirection(me.x, me.y, state.cameraX, state.cameraY);
+      const step = Math.min(distance * 0.01 * delta, distance);
+      state.cameraX += step * Math.cos(angle);
+      state.cameraY += step * Math.sin(angle);
+    }
+  }
+
+  camera.left = state.cameraX - VIEW_WIDTH / 2;
+  camera.top = state.cameraY - VIEW_HEIGHT / 2;
+}

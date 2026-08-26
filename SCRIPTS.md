@@ -56,3 +56,6 @@ API/server-list, then prints the URLs. Ctrl+C stops all of them.
 
 `run.mjs` accepts a few flags the scripts don't expose, e.g. `npm run play -- --no-build`
 to skip the rebuild, `--no-sandbox`, or `--no-api`.
+
+---
+this documentation was made with ai

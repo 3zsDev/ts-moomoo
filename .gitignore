@@ -25,3 +25,4 @@ desktop.ini
 
 test/
 .archive/
+package-lock.json

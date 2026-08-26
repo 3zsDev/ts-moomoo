@@ -1,3 +1,4 @@
+import { config } from "../config";
 import { itemData } from "../data/items";
 import { state } from "../game/state";
 import { connection } from "../net/Connection";
@@ -25,14 +26,14 @@ export function refreshUpgrades(points: number, age?: number): void {
   for (let i = 0; i < itemData.weapons.length; ++i) {
     const weapon = itemData.weapons[i];
     if (weapon.age !== me.upgrAge) continue;
-    if (weapon.pre != null && !me.weapons.includes(weapon.pre)) continue;
+    if (!config.allowAllUpgrades && weapon.pre != null && !me.weapons.includes(weapon.pre)) continue;
     addChoice(i);
   }
 
   for (let i = 0; i < itemData.list.length; ++i) {
     const item = itemData.list[i];
     if (item.age !== me.upgrAge) continue;
-    if (item.pre != null && !me.items.includes(item.pre)) continue;
+    if (!config.allowAllUpgrades && item.pre != null && !me.items.includes(item.pre)) continue;
     addChoice(ITEM_INDEX_OFFSET + i);
   }
 

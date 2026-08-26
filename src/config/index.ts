@@ -3,6 +3,7 @@ import { hud } from "./hud";
 import { network } from "./network";
 import { animalTuning, player } from "./player";
 import { skinColors } from "./colors";
+import { upgrades } from "./upgrades";
 import { world, worldGen } from "./world";
 import { cowNames } from "../data/names";
 import { isSandbox } from "../environment";
@@ -18,6 +19,7 @@ export const config = {
   ...combat,
   ...hud,
   ...animalTuning,
+  ...upgrades,
 
   playerScale: player.scale,
   playerSpeed: player.speed,

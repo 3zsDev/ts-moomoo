@@ -423,7 +423,7 @@ export class Game implements SimHost {
     if (index < itemData.weapons.length) {
       const weapon = itemData.weapons[index];
       if (weapon.age !== player.upgrAge) return;
-      if (weapon.pre != null && !player.weapons.includes(weapon.pre)) return;
+      if (!config.allowAllUpgrades && weapon.pre != null && !player.weapons.includes(weapon.pre)) return;
 
       player.weapons[weapon.type] = weapon.id;
       if (weapon.type === 0) player.weaponIndex = weapon.id;

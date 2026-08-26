@@ -50,7 +50,7 @@ export class Connection {
         const [socketId, seed, key, mode] = args as [number, number, string, number];
         this.socketId = socketId;
         this.cipher = mode === SHUFFLED_MODE
-          ? { key: hexToBytes(key), tables: buildCipherTables(seed >>> 0), seq: 0 }
+          ? { key: hexToBytes(key), tables: buildCipherTables(seed), seq: 0 }
           : null;
 
         if (!readyFired) {

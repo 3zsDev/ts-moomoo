@@ -29,7 +29,7 @@ export function sha256(message: Uint8Array): Uint8Array {
 
   const view = new DataView(padded.buffer);
   view.setUint32(padded.length - 8, Math.floor(bitLength / 4294967296), false);
-  view.setUint32(padded.length - 4, bitLength >>> 0, false);
+  view.setUint32(padded.length - 4, bitLength, false);
 
   const schedule = new Uint32Array(64);
 

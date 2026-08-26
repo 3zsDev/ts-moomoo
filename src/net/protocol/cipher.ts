@@ -30,7 +30,7 @@ function createRandom(seed: number): () => number {
 
 function buildTable(codes: string[], seed: number): CodeTable {
   const indices = codes.map((_, index) => index);
-  const random = createRandom(seed >>> 0);
+  const random = createRandom(seed);
 
   for (let i = indices.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
@@ -47,9 +47,9 @@ function buildTable(codes: string[], seed: number): CodeTable {
 }
 
 export function buildCipherTables(seed: number): CipherTables {
-  const mixed = (seed ^ Math.imul(PROTOCOL_VERSION, 2654435761)) >>> 0;
+  const mixed = seed ^ Math.imul(PROTOCOL_VERSION, 2654435761);
   return {
     c2s: buildTable(CLIENT_CODES, mixed),
-    s2c: buildTable(SERVER_CODES, (mixed ^ 2246822507) >>> 0),
+    s2c: buildTable(SERVER_CODES, mixed ^ 2246822507),
   };
 }

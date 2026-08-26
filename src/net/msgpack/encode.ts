@@ -1,7 +1,10 @@
 import type { MsgPackValue } from "./types";
 
+const BYTE_SCALE = [1, 0x100, 0x10000, 0x1000000, 0x100000000, 0x10000000000, 0x1000000000000, 0x100000000000000];
+
 class Writer {
   private bytes = new Uint8Array(1024);
+  private view = new DataView(this.bytes.buffer);
   private length = 0;
 
   private ensure(extra: number): void {
@@ -11,6 +14,7 @@ class Writer {
     const grown = new Uint8Array(size);
     grown.set(this.bytes.subarray(0, this.length));
     this.bytes = grown;
+    this.view = new DataView(grown.buffer);
   }
 
   public u8(value: number): void {
@@ -27,13 +31,13 @@ class Writer {
   public big(value: number, byteLength: number): void {
     this.ensure(byteLength);
     for (let shift = byteLength - 1; shift >= 0; shift--) {
-      this.bytes[this.length++] = (value / Math.pow(2, shift * 8)) & 0xff;
+      this.bytes[this.length++] = (value / BYTE_SCALE[shift]) & 0xff;
     }
   }
 
   public f64(value: number): void {
     this.ensure(8);
-    new DataView(this.bytes.buffer).setFloat64(this.length, value, false);
+    this.view.setFloat64(this.length, value, false);
     this.length += 8;
   }
 
@@ -79,7 +83,8 @@ function writeNumber(writer: Writer, value: number): void {
     else if (value < 0x100) { writer.u8(0xcc); writer.big(value, 1); }
     else if (value < 0x10000) { writer.u8(0xcd); writer.big(value, 2); }
     else if (value < 0x100000000) { writer.u8(0xce); writer.big(value, 4); }
-    else { writer.u8(0xcf); writer.big(value, 8); }
+    else if (value <= Number.MAX_SAFE_INTEGER) { writer.u8(0xcf); writer.big(value, 8); }
+    else { writer.u8(0xcb); writer.f64(value); }
     return;
   }
 

@@ -28,8 +28,8 @@ export function sha256(message: Uint8Array): Uint8Array {
   padded[message.length] = 0x80;
 
   const view = new DataView(padded.buffer);
-  view.setUint32(padded.length - 4, bitLength >>> 0, false);
   view.setUint32(padded.length - 8, Math.floor(bitLength / 4294967296), false);
+  view.setUint32(padded.length - 4, bitLength >>> 0, false);
 
   const schedule = new Uint32Array(64);
 
@@ -61,14 +61,14 @@ export function sha256(message: Uint8Array): Uint8Array {
       a = (temp1 + temp2) | 0;
     }
 
-    hash[0] = (hash[0] + a) | 0;
-    hash[1] = (hash[1] + b) | 0;
-    hash[2] = (hash[2] + c) | 0;
-    hash[3] = (hash[3] + d) | 0;
-    hash[4] = (hash[4] + e) | 0;
-    hash[5] = (hash[5] + f) | 0;
-    hash[6] = (hash[6] + g) | 0;
-    hash[7] = (hash[7] + h) | 0;
+    hash[0] += a;
+    hash[1] += b;
+    hash[2] += c;
+    hash[3] += d;
+    hash[4] += e;
+    hash[5] += f;
+    hash[6] += g;
+    hash[7] += h;
   }
 
   const digest = new Uint8Array(DIGEST_SIZE);

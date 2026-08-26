@@ -154,10 +154,8 @@ export class ServerBrowser {
     this.selectDefault(all);
     this.onUpdate?.();
 
-    if (this.pingTimer) clearInterval(this.pingTimer);
+    this.stopPinging();
     this.pingTimer = setInterval(() => void this.measureLatency(), 5000);
-
-    if (this.localTimer) clearInterval(this.localTimer);
     this.localTimer = setInterval(() => {
       void this.syncLocal().then(() => this.onUpdate?.());
     }, 5000);

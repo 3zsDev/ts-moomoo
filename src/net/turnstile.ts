@@ -28,7 +28,6 @@ declare global {
   }
 }
 
-
 let token: string | null = null;
 let widgetId: string | null = null;
 let scriptRequested = false;
@@ -39,6 +38,11 @@ let captchaRequired = true;
 export function getCaptchaToken(): string | null {
   if (!token || !isCaptchaRequired()) return null;
   return `cf:${token}`;
+}
+
+function clearToken(): void {
+  token = null;
+  onTokenChange?.(false);
 }
 
 export function hasCaptchaToken(): boolean {
@@ -91,8 +95,7 @@ function ensureWidget(): void {
 
 export function resetTurnstile(): void {
   if (!isCaptchaRequired()) return;
-  token = null;
-  onTokenChange?.(false);
+  clearToken();
   if (widgetId !== null) window.turnstile?.reset(widgetId);
 }
 
@@ -135,14 +138,8 @@ function tryRender(): boolean {
         token = value;
         onTokenChange?.(true);
       },
-      "error-callback": () => {
-        token = null;
-        onTokenChange?.(false);
-      },
-      "expired-callback": () => {
-        token = null;
-        onTokenChange?.(false);
-      },
+      "error-callback": clearToken,
+      "expired-callback": clearToken,
     });
     return widgetId !== null;
   } catch (error) {

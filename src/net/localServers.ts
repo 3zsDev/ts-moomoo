@@ -27,7 +27,8 @@ async function probe(port: number): Promise<ServerEntry | null> {
     const list = (await response.json()) as LocalServerInfo[];
     const info = Array.isArray(list) ? list[0] : null;
     if (!info) return null;
-    if (Boolean(info.sandbox) !== isSandbox()) return null;
+    const sandbox = Boolean(info.sandbox);
+    if (sandbox !== isSandbox()) return null;
 
     const name = String(info.name ?? port);
     return {
@@ -39,7 +40,7 @@ async function probe(port: number): Promise<ServerEntry | null> {
       playerCount: Number(info.playerCount) || 0,
       playerCapacity: Number(info.playerCapacity) || network.maxPlayers,
       isPrivate: false,
-      sandbox: Boolean(info.sandbox),
+      sandbox,
       httpUrl: `http://localhost:${port}`,
       wsUrl: `ws://localhost:${port}`,
     };

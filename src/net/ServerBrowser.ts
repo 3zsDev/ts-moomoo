@@ -82,8 +82,12 @@ export class ServerBrowser {
     window.location.href = this.generateHref(region, name, null);
   }
 
+  private lookup(region: string, name: string): ServerEntry | undefined {
+    return this.servers[region]?.find((server) => server.name === name);
+  }
+
   public findServer(region: string, name: string): ServerEntry | undefined {
-    const found = this.servers[region]?.find((server) => server.name === name);
+    const found = this.lookup(region, name);
     if (!found) console.warn(`No server "${name}" in region "${region}".`);
     return found;
   }
@@ -109,7 +113,7 @@ export class ServerBrowser {
   public selectedServer(): ServerEntry | undefined {
     const [region, name] = this.parseServerQuery(this.selectedKey);
     if (!region || !name) return undefined;
-    return this.servers[region]?.find((server) => server.name === name);
+    return this.lookup(region, name);
   }
 
   public isLocalSelected(): boolean {

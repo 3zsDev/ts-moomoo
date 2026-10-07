@@ -18,11 +18,10 @@ export interface MapMarker {
 
 export const state = {
   me: null as Player | null,
+  myPlayerId: null as number | null,
 
-  myPlayerId: null as string | null,
-
+  staff: false,
   inGame: false,
-
   firstLoad: true,
 
   delta: 0,

@@ -5,6 +5,7 @@ import type { Alliance } from "../../game/state";
 export interface HandlerHooks {
   onDisconnect(reason: string): void;
   onSetupGame(): void;
+  onSpawn(): void;
   onDeath(): void;
 }
 
@@ -22,7 +23,7 @@ export function disconnect(reason: string): void {
   hooks.onDisconnect(reason);
 }
 
-export function setupGame(playerId: string): void {
+export function setupGame(playerId: number): void {
   state.myPlayerId = playerId;
   state.inGame = true;
 
@@ -31,6 +32,10 @@ export function setupGame(playerId: string): void {
     gameObjects.length = 0;
   }
   hooks.onSetupGame();
+}
+
+export function spawned(): void {
+  hooks.onSpawn();
 }
 
 export function killPlayer(): void {

@@ -9,7 +9,7 @@ export function findPlayerBySid(sid: number): Player | null {
 }
 
 export function findAnimalBySid(sid: number): Animal | null {
-  return animals.find((animal) => animal.sid === sid) ?? null;
+  return animals.find((animal) => animal.active && animal.sid === sid) ?? null;
 }
 
 export function findObjectBySid(sid: number): GameObject | null {

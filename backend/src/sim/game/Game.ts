@@ -1,4 +1,6 @@
+import { censor, isRude, sanitize } from "../../../../api/lib/filter.mjs";
 import { serverConfig } from "../../config";
+import { reportLife, reportPlayer, type ReportTarget, type Session } from "../../net/api";
 import type { SimClient } from "../client";
 import {
   accessories, Animal, AnimalManager, ClientPacket, config, findAccessory, findHat,
@@ -7,24 +9,41 @@ import {
   type Cosmetic, type Damageable, type MsgPackValue, type ServerHooks,
 } from "../../shared";
 import { createSimPlugin, type SimHost, type SimPlugin } from "../plugin";
+import { runAdminCommand } from "./admin";
 import { arenaBosses } from "./arena";
 import { ClanManager } from "./clans";
+import { FallsDirector } from "./falls";
 import { findSpawnPoint, generateWorld } from "./worldgen";
 
 const deltaSpeed = 1000 / config.serverUpdateRate;
+const YETI = 10;
 const SPIN_MS = 16;
 const LEADERBOARD_INTERVAL = 1000;
 const GOLD_INTERVAL = 1000;
 const LEADERBOARD_SIZE = 10;
 const MAX_CHAT_LENGTH = 30;
 
-const NON_QWERTY = /[^\x20-\x7E]+/g; // not exactly what moomoo uses but its close enough and saves me time
-
 function capChatLength(text: string): string {
   return text.length <= MAX_CHAT_LENGTH ? text : text.slice(0, MAX_CHAT_LENGTH).trimEnd();
 }
 
 const RESOURCE_KEYS = ["wood", "food", "stone", "points"] as const;
+
+const ANIMAL_KEYS: Record<number, string> = {
+  0: "cow", 1: "pig", 2: "bull", 3: "bully", 4: "wolf", 5: "duck", 6: "moostafa",
+  7: "treasure", 8: "moofie", 9: "boar", 10: "yeti", 11: "crab_king", 12: "sheep",
+};
+
+const ROLE_BADGES = { mod: 1, admin: 2 } as const;
+
+export type ModerationAction = "kick" | "ban" | "shadow" | "clear";
+
+type SpawnBand = "any" | "snow" | "desert" | "grass";
+
+interface ViewState {
+  players: Set<number>;
+  animals: Set<number>;
+}
 
 export class Game implements SimHost {
   public readonly players: Player[] = [];
@@ -47,10 +66,16 @@ export class Game implements SimHost {
   public readonly projectileManager: ProjectileManager;
   public readonly animalManager: AnimalManager;
   public readonly clans: ClanManager;
+  public readonly falls: FallsDirector;
 
   private readonly clientsByPlayer = new Map<Player, SimClient>();
   private readonly playersByClient = new Map<SimClient, Player>();
   private readonly playersById = new Map<string, Player>();
+  private readonly views = new Map<Player, ViewState>();
+  private readonly statsTargets = new Map<Player, number>();
+  private readonly sessions = new Map<Player, Session>();
+  private readonly lifeStart = new Map<Player, number>();
+  private reservedNames = new Set<string>();
 
   public readonly plugin: SimPlugin;
 
@@ -60,6 +85,7 @@ export class Game implements SimHost {
   private goldTimer = 0;
   private leaderboardTimer = 0;
   private minimapTimer = 0;
+  private statsTimer = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private nextTickAt = 0;
   private running = false;
@@ -78,6 +104,7 @@ export class Game implements SimHost {
       config, this.awardScore, this.hooks,
     );
     this.clans = new ClanManager(this.players, this.hooks);
+    this.falls = new FallsDirector(this);
 
     this.clans.onJoinRequest = (owner, applicant) => {
       this.plugin.onClanRequest(owner, applicant.sid);
@@ -178,18 +205,21 @@ export class Game implements SimHost {
     for (const entry of serverConfig.animals) {
       for (let i = 0; i < entry.count; i++) {
         const [x, y] = this.randomAnimalPoint(entry.band);
-        this.animalManager.spawn(x, y, randInt(0, 628) / 100, entry.type);
+        const animal = this.animalManager.spawn(x, y, randInt(0, 628) / 100, entry.type);
+        animal.spawnPoint = () => this.randomAnimalPoint(entry.band);
+        if (entry.type === YETI) animal.spawnDelay = serverConfig.yetiRespawn;
       }
     }
 
-    // moofie and moostafa spawns
+    this.falls.spawn();
+
     for (const boss of arenaBosses) {
       const dir = boss.dir ?? randInt(0, 628) / 100;
       this.animalManager.spawn(boss.x, boss.y, dir, boss.type);
     }
   }
 
-  private randomAnimalPoint(band: "any" | "snow" | "desert" | "grass"): [number, number] {
+  private randomAnimalPoint(band: SpawnBand): [number, number] {
     const x = randInt(200, config.mapScale - 200);
     const desertTop = config.mapScale - config.snowBiomeTop;
 
@@ -201,9 +231,13 @@ export class Game implements SimHost {
     }
   }
 
-  public addClient(client: SimClient): boolean {
-    if (this.humanCount() >= this.capacity()) {
-      client.close(4001, "Server is full");
+  public addClient(client: SimClient, session: Session): boolean {
+    if (this.humanCount() >= this.capacity() && !this.isStaff(session)) {
+      this.turnAway(client, "server is full");
+      return false;
+    }
+    if (serverConfig.membersOnly && !session.account) {
+      this.turnAway(client, "Sign in to play on this server");
       return false;
     }
 
@@ -224,15 +258,30 @@ export class Game implements SimHost {
     this.playersById.set(id, player);
     this.clientsByPlayer.set(player, client);
     this.playersByClient.set(client, player);
+    this.views.set(player, { players: new Set(), animals: new Set() });
+    this.sessions.set(player, session);
+    player.member = Boolean(session.account);
 
     client.onPacket = (type, args) => this.handlePacket(client, player, type, args);
     client.onClose = () => this.removeClient(client);
     return true;
   }
 
+  public turnAway(client: SimClient, reason: string): void {
+    client.send(ServerPacket.Disconnect, reason);
+    client.close(4001, reason);
+  }
+
+  private isStaff(session: Session | undefined): boolean {
+    return session?.account?.role === "admin" || session?.account?.role === "mod";
+  }
+
   public removeClient(client: SimClient): void {
     const player = this.playersByClient.get(client);
     if (!player) return;
+
+    if (player.alive) this.submitLife(player, false);
+    this.sessions.delete(player);
 
     this.clans.remove(player);
     this.objectManager.removeAllItems(player.sid, this.hooks);
@@ -243,6 +292,9 @@ export class Game implements SimHost {
     this.clientsByPlayer.delete(player);
     this.playersByClient.delete(client);
     this.playersById.delete(player.id);
+    this.views.delete(player);
+    this.statsTargets.delete(player);
+    this.falls.forgetPlayer(player.sid);
 
     const index = this.players.indexOf(player);
     if (index >= 0) this.players.splice(index, 1);
@@ -251,14 +303,52 @@ export class Game implements SimHost {
   }
 
   private handleDeath(player: Player): void {
-    void player;
+    this.submitLife(player, true);
+  }
+
+  private submitLife(player: Player, died: boolean): void {
+    const start = this.lifeStart.get(player);
+    this.lifeStart.delete(player);
+    const account = this.sessions.get(player)?.account;
+    if (!account || start === undefined || serverConfig.sandbox) return;
+
+    const stats = player.stats;
+    const animalKills: Record<string, number> = {};
+    for (const [index, count] of Object.entries(stats.animalKills)) {
+      const key = ANIMAL_KEYS[Number(index)];
+      if (key) animalKills[key] = (animalKills[key] ?? 0) + count;
+    }
+
+    reportLife({
+      account: account.id,
+      died,
+      kills: player.kills,
+      score: Math.round(player.points),
+      damage: Math.round(stats.damage),
+      healing: Math.round(stats.healing),
+      wood: Math.round(stats.wood),
+      food: Math.round(stats.food),
+      stone: Math.round(stats.stone),
+      gold: Math.round(stats.gold),
+      animalDamage: Math.round(stats.animalDamage),
+      animalKills,
+      playtime: Date.now() - start,
+    });
   }
 
   private join(client: SimClient, player: Player, raw: MsgPackValue): void {
     if (player.alive) return;
 
     const data = (raw ?? {}) as { name?: string; moofoll?: unknown; skin?: unknown };
-    this.spawnPlayer(player, String(data.name ?? ""), Number(data.skin) || 0, !!data.moofoll);
+    const account = this.sessions.get(player)?.account;
+
+    let name = sanitize(String(data.name ?? "")).trim();
+    if (account?.name) name = account.name;
+    else if (isRude(name) || this.reservedNames.has(name.toLowerCase())) name = "unknown";
+    player.clan = account?.clan ?? null;
+
+    this.spawnPlayer(player, name, Number(data.skin) || 0, !!data.moofoll);
+    this.lifeStart.set(player, Date.now());
     this.sendJoinState(client, player);
   }
 
@@ -282,17 +372,20 @@ export class Game implements SimHost {
 
   private sendJoinState(client: SimClient, player: Player): void {
     client.send(ServerPacket.SetInitData, { teams: this.clans.snapshot() });
-    client.send(ServerPacket.SetupGame, player.id);
+    client.send(ServerPacket.SetupGame, player.sid);
     client.send(ServerPacket.AddPlayer, player.getData() as unknown as MsgPackValue, 1);
     player.sentTo[player.id] = true;
+    this.sendOwnState(client, player);
+  }
 
+  private sendOwnState(client: SimClient, player: Player): void {
     this.hooks.send(player.id, ServerPacket.UpdateItems, player.items, 0);
     this.hooks.send(player.id, ServerPacket.UpdateItems, player.weapons, 1);
 
     for (const key of RESOURCE_KEYS) {
       client.send(ServerPacket.UpdatePlayerValue, key, player[key], 1);
     }
-    client.send(ServerPacket.UpdatePlayerValue, "kills", 0, 1);
+    client.send(ServerPacket.UpdatePlayerValue, "kills", player.kills, 1);
 
     client.send(ServerPacket.UpdateAge, player.XP, fixTo(player.maxXP, 1), player.age);
     this.hooks.send(player.id, ServerPacket.UpdateUpgrades, player.upgradePoints, player.upgrAge);
@@ -302,11 +395,11 @@ export class Game implements SimHost {
 
     for (const key of Object.keys(player.skins)) {
       const hat = findHat(Number(key));
-      if (hat && hat.price > 0) this.hooks.send(player.id, ServerPacket.UpdateStoreItems, 0, hat.id, 0);
+      if (hat && (hat.price > 0 || hat.dontSell)) this.hooks.send(player.id, ServerPacket.UpdateStoreItems, 0, hat.id, 0);
     }
     for (const key of Object.keys(player.tails)) {
       const accessory = findAccessory(Number(key));
-      if (accessory && accessory.price > 0) {
+      if (accessory && (accessory.price > 0 || accessory.dontSell)) {
         this.hooks.send(player.id, ServerPacket.UpdateStoreItems, 0, accessory.id, 1);
       }
     }
@@ -340,6 +433,28 @@ export class Game implements SimHost {
 
       case ClientPacket.KickFromClan:
         if (player.alive) this.clans.kick(player, args[0]);
+        return;
+
+      case ClientPacket.RequestPlayerStats: {
+        const target = this.players.find((other) => other.sid === Number(args[0]));
+        if (!target) return;
+        this.statsTargets.set(player, target.sid);
+        this.sendStats(player, target);
+        return;
+      }
+
+      case ClientPacket.ReportPlayer: {
+        const target = this.findPlayer(Number(args[0]));
+        if (target && target !== player && this.clientsByPlayer.has(target)) {
+          void this.report(player, target, Number(args[1]) || 0);
+        }
+        return;
+      }
+
+      case ClientPacket.AdminCommand:
+        if (player.alive && (serverConfig.localAdmin || this.sessions.get(player)?.account?.role === "admin")) {
+          runAdminCommand(this, player, args);
+        }
         return;
     }
 
@@ -377,7 +492,8 @@ export class Game implements SimHost {
       }
 
       case ClientPacket.AutoGather:
-        player.autoGather = args[0] ? (player.autoGather ? 0 : 1) : 0;
+        if (args[0]) player.autoGather = player.autoGather ? 0 : 1;
+        else player.lockDir = !player.lockDir;
         return;
 
       case ClientPacket.SelectToBuild:
@@ -432,7 +548,7 @@ export class Game implements SimHost {
     } else {
       const item = itemData.list[index - itemData.weapons.length];
       if (!item || item.age !== player.upgrAge) return;
-      if (item.pre != null && !player.items.includes(item.pre)) return;
+      if (!config.allowAllUpgrades && item.pre != null && !player.items.includes(item.pre)) return;
 
       player.addItem(item.id);
       this.hooks.send(player.id, ServerPacket.UpdateItems, player.items, 0);
@@ -483,17 +599,12 @@ export class Game implements SimHost {
   private handleChat(player: Player, raw: MsgPackValue): void {
     if (typeof raw !== "string") return;
 
-    const message = capChatLength(
-      raw
-        .replace(NON_QWERTY, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    );
+    const message = capChatLength(censor(sanitize(raw).replace(/\s+/g, " ").trim()));
     if (!message) return;
 
     const reply = this.plugin.onCommand(message);
     if (reply !== null) {
-      this.hooks.send(player.id, ServerPacket.ReceiveChat, player.sid, reply);
+      this.hooks.send(player.id, ServerPacket.ReceiveChat, -1, reply);
       return;
     }
 
@@ -501,6 +612,10 @@ export class Game implements SimHost {
   }
 
   public deliverChat(player: Player, message: string): void {
+    if (this.sessions.get(player)?.shadow) {
+      this.hooks.send(player.id, ServerPacket.ReceiveChat, player.sid, message);
+      return;
+    }
     for (const other of this.players) {
       if (other.alive && other.canSee(player)) {
         this.hooks.send(other.id, ServerPacket.ReceiveChat, player.sid, message);
@@ -517,6 +632,57 @@ export class Game implements SimHost {
     for (const other of audience) {
       this.hooks.send(other.id, ServerPacket.PingMap, x, y);
     }
+  }
+
+  private reportTarget(player: Player): ReportTarget {
+    const session = this.sessions.get(player);
+    return { account: session?.account?.id ?? null, did: session?.did ?? null, name: player.name };
+  }
+
+  private async report(reporter: Player, target: Player, action: number): Promise<void> {
+    const staffAction = this.isStaff(this.sessions.get(reporter)) ? action : 0;
+    const verdict = await reportPlayer(this.reportTarget(reporter), this.reportTarget(target), staffAction);
+    if (!verdict) return;
+
+    const session = this.sessions.get(target);
+    if (session) this.moderate({ id: session.account?.id, did: session.did ?? undefined }, verdict);
+  }
+
+  public moderate(target: { id?: string; did?: string }, action: ModerationAction): number {
+    let matched = 0;
+    for (const [player, session] of this.sessions) {
+      const byAccount = target.id !== undefined && session.account?.id === target.id;
+      const byDevice = target.did !== undefined && session.did === target.did;
+      if (!byAccount && !byDevice) continue;
+
+      matched++;
+      if (action === "kick" || action === "ban") {
+        this.kick(player, action === "ban" ? "You have been banned" : "You were kicked");
+      } else {
+        session.shadow = action === "shadow";
+      }
+    }
+    return matched;
+  }
+
+  public kick(player: Player, reason: string): void {
+    const client = this.clientsByPlayer.get(player);
+    if (!client) return;
+    client.send(ServerPacket.Disconnect, reason);
+    client.close(4003, reason);
+  }
+
+  public setReserved(names: string[], clans: string[]): void {
+    this.reservedNames = new Set(names);
+    this.clans.reservedClans = new Set(clans);
+  }
+
+  public shutdownNotice(seconds: number): void {
+    this.hooks.broadcast(ServerPacket.ServerShutdownNotice, Math.max(0, Math.round(seconds)));
+  }
+
+  public kickAll(reason: string): void {
+    for (const player of [...this.clientsByPlayer.keys()]) this.kick(player, reason);
   }
 
   public simStats(): Record<string, unknown> {
@@ -576,6 +742,23 @@ export class Game implements SimHost {
     if (index >= 0) this.players.splice(index, 1);
 
     this.hooks.broadcast(ServerPacket.RemovePlayer, player.id);
+  }
+
+  public refreshPlayer(player: Player): void {
+    player.sentTo = {};
+    const client = this.clientsByPlayer.get(player);
+    if (!client) return;
+    client.send(ServerPacket.AddPlayer, player.getData() as unknown as MsgPackValue, 1);
+    player.sentTo[player.id] = true;
+    this.sendOwnState(client, player);
+  }
+
+  public findPlayer(sid: number): Player | undefined {
+    return this.players.find((player) => player.sid === sid);
+  }
+
+  public sendTo(player: Player, packet: string, ...args: MsgPackValue[]): void {
+    this.clientsByPlayer.get(player)?.send(packet, ...args);
   }
 
   public spawn(player: Player, name: string, skin: number): void {
@@ -674,6 +857,35 @@ export class Game implements SimHost {
     this.sendWorld();
     this.tickLeaderboard(delta);
     this.tickMinimap(delta);
+    this.tickStats(delta);
+  }
+
+  private tickStats(delta: number): void {
+    this.statsTimer += delta;
+    if (this.statsTimer < serverConfig.statsInterval) return;
+    this.statsTimer -= serverConfig.statsInterval;
+
+    for (const [viewer, sid] of this.statsTargets) {
+      const target = this.findPlayer(sid);
+      if (!target) {
+        this.statsTargets.delete(viewer);
+        continue;
+      }
+      this.sendStats(viewer, target);
+    }
+  }
+
+  private sendStats(viewer: Player, target: Player): void {
+    const stats = target.stats;
+    const session = this.sessions.get(target);
+    const accountId = session?.account?.id ?? (session?.did ? `g:${session.did}` : 0);
+    this.sendTo(
+      viewer, ServerPacket.PlayerStats,
+      target.sid, target.kills,
+      Math.round(stats.wood), Math.round(stats.food), Math.round(stats.stone), Math.round(stats.gold),
+      Math.round(stats.damage), Math.round(stats.animalDamage), Math.round(stats.healing),
+      stats.animals, stats.bosses, accountId, Math.round(target.points),
+    );
   }
 
   private tickGold(delta: number): void {
@@ -788,7 +1000,10 @@ export class Game implements SimHost {
   }
 
   private sendPlayers(player: Player, client: SimClient): void {
-    const payload: MsgPackValue[] = [];
+    const positions: MsgPackValue[] = [];
+    const attributes: MsgPackValue[] = [];
+    const view = this.views.get(player);
+    const seen = new Set<number>();
 
     for (const other of this.players) {
       if (!other.alive) continue;
@@ -803,30 +1018,42 @@ export class Game implements SimHost {
         );
       }
 
-      payload.push(
-        other.sid, fixTo(other.x, 1), fixTo(other.y, 1), fixTo(other.dir, 2),
-        other.buildIndex, other.weaponIndex, other.weaponVariant,
+      seen.add(other.sid);
+      positions.push(other.sid, fixTo(other.x, 1), fixTo(other.y, 1), Math.round(other.dir * 100));
+      attributes.push(
+        other.sid, other.buildIndex, other.weaponIndex, other.weaponVariant,
         other.team, other.isLeader ? 1 : 0,
         other.skinIndex, other.tailIndex, other.iconIndex, other.zIndex,
       );
     }
 
-    client.send(ServerPacket.UpdatePlayers, payload);
+    client.send(ServerPacket.UpdatePlayers, positions, attributes, this.hiddenSince(view?.players, seen));
+    if (view) view.players = seen;
   }
 
   private sendAnimals(player: Player, client: SimClient): void {
     const payload: MsgPackValue[] = [];
+    const view = this.views.get(player);
+    const seen = new Set<number>();
 
     for (const animal of this.animals) {
       if (!animal.active || !player.canSee(animal)) continue;
 
+      seen.add(animal.sid);
       payload.push(
         animal.sid, animal.index, fixTo(animal.x, 1), fixTo(animal.y, 1),
-        fixTo(animal.dir, 2), Math.round(animal.health), animal.nameIndex,
+        Math.round(animal.dir * 100), Math.round(animal.health), animal.nameIndex, animal.state,
       );
     }
 
-    client.send(ServerPacket.LoadAI, payload);
+    client.send(ServerPacket.LoadAI, payload, this.hiddenSince(view?.animals, seen));
+    if (view) view.animals = seen;
+  }
+
+  private hiddenSince(before: Set<number> | undefined, now: Set<number>): number[] {
+    const hidden: number[] = [];
+    if (before) for (const sid of before) if (!now.has(sid)) hidden.push(sid);
+    return hidden;
   }
 
   private tickLeaderboard(delta: number): void {
@@ -834,14 +1061,39 @@ export class Game implements SimHost {
     if (this.leaderboardTimer < LEADERBOARD_INTERVAL) return;
     this.leaderboardTimer -= LEADERBOARD_INTERVAL;
 
-    const rows: MsgPackValue[] = [];
+    this.updateKillLeader();
+
     const ranked = this.players
-      .filter((player) => player.alive)
+      .filter((player) => player.alive || (this.clientsByPlayer.has(player) && player.points > 0))
       .sort((a, b) => b.points - a.points)
       .slice(0, LEADERBOARD_SIZE);
 
-    for (const player of ranked) rows.push(player.id, player.name, Math.round(player.points));
-    this.hooks.broadcast(ServerPacket.UpdateLeaderboard, rows);
+    const rows: MsgPackValue[] = [];
+    const roles: MsgPackValue[] = [];
+    const dead: MsgPackValue[] = [];
+    const clanTags: MsgPackValue[] = [];
+    const tribeTags: MsgPackValue[] = [];
+
+    for (const player of ranked) {
+      rows.push(player.sid, player.name, Math.round(player.points));
+      if (!player.alive) dead.push(player.sid);
+
+      const account = this.sessions.get(player)?.account;
+      if (account) roles.push(player.sid, account.role ? ROLE_BADGES[account.role] : 0);
+      if (player.clan) clanTags.push(player.sid, player.clan);
+      if (player.team) tribeTags.push(player.sid, player.team);
+    }
+    const crabKillers = ranked.filter((player) => this.falls.crabKillers.has(player.sid)).map((player) => player.sid);
+
+    this.hooks.broadcast(ServerPacket.UpdateLeaderboard, rows, roles, dead, crabKillers, clanTags, tribeTags);
+  }
+
+  private updateKillLeader(): void {
+    let leader: Player | null = null;
+    for (const player of this.players) {
+      if (player.alive && player.kills > 0 && (!leader || player.kills > leader.kills)) leader = player;
+    }
+    for (const player of this.players) player.iconIndex = player === leader ? 1 : 0;
   }
 
   private tickMinimap(delta: number): void {
@@ -850,11 +1102,14 @@ export class Game implements SimHost {
     this.minimapTimer -= config.minimapRate;
 
     for (const player of this.players) {
-      if (!player.alive || !player.team) continue;
+      if (!player.alive) continue;
+      const staff = this.isStaff(this.sessions.get(player));
+      if (!player.team && !staff) continue;
 
       const payload: MsgPackValue[] = [];
-      for (const mate of this.clans.members(player.team)) {
-        if (mate === player) continue;
+      const shown = staff ? this.players.filter((other) => other.alive) : this.clans.members(player.team!);
+      for (const mate of shown) {
+        if (mate === player || mate.x < 0) continue;
         payload.push(Math.round(mate.x), Math.round(mate.y));
       }
       this.hooks.send(player.id, ServerPacket.UpdateMinimap, payload);

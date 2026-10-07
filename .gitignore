@@ -26,3 +26,7 @@ desktop.ini
 test/
 .archive/
 package-lock.json
+
+.live-game/
+scripts/
+api/data/

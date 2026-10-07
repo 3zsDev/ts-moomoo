@@ -33,13 +33,11 @@ async function probe(port: number): Promise<ServerEntry | null> {
     const name = String(info.name ?? port);
     return {
       region: LOCAL_REGION,
-      key: `${LOCAL_REGION}:${name}:0`,
+      key: name,
       name,
-      index: 0,
       port,
       playerCount: Number(info.playerCount) || 0,
       playerCapacity: Number(info.playerCapacity) || network.maxPlayers,
-      isPrivate: false,
       sandbox,
       httpUrl: `http://localhost:${port}`,
       wsUrl: `ws://localhost:${port}`,
@@ -62,7 +60,7 @@ export async function discoverLocalServers(): Promise<ServerEntry[]> {
     if (!entry) continue;
     if (taken.has(entry.name)) {
       entry.name = `${entry.name}-${entry.port}`;
-      entry.key = `${LOCAL_REGION}:${entry.name}:0`;
+      entry.key = entry.name;
     }
     taken.add(entry.name);
     servers.push(entry);

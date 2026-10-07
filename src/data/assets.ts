@@ -1,4 +1,4 @@
-import { weaponVariants } from "./weaponVariants";
+import { unlockableVariants } from "./weaponVariants";
 import { animalTypes } from "./animals";
 import { accessories, hats } from "./cosmetics";
 import { projectileTypes, weapons } from "./items";
@@ -13,7 +13,7 @@ export function listAssetPaths(): string[] {
   const paths = new Set<string>();
 
   for (const weapon of weapons) {
-    for (const variant of weaponVariants) {
+    for (const variant of unlockableVariants) {
       paths.add(`img/weapons/${weapon.src}${variant.src}.png`);
     }
   }

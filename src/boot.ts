@@ -1,28 +1,41 @@
 import { config } from "./config";
-import { serverListUrl } from "./environment";
+import { serverListUrl, socialEnabled } from "./environment";
 import { state } from "./game/state";
 import { createBackgroundMenu } from "./game/menuWorld";
-import { connectToServer, grantFollowBonus, joinGame, serverBrowser } from "./game/session";
-import { installInputHandlers, sendAimAngle, touchControls } from "./input";
-import { connection } from "./net/Connection";
-import { ClientPacket } from "./net/protocol";
-import { initTurnstile, isCaptchaRequired, setCaptchaRequired } from "./net/turnstile";
+import { grantFollowBonus, serverBrowser } from "./game/session";
+import {
+  clearHeldKeys, initInputMode, installInputHandlers, isCapturingKey, pingMinimap, sendAimAngle,
+  toggleAutoGather, touchControls,
+} from "./input";
+import { account, auth, friends, initAccount, isStaff, onAccountChange } from "./net/api";
+import { initTurnstile, setLocalServerSelected } from "./net/turnstile";
 import { canvas } from "./render/canvas";
 import { minimapCanvas } from "./render/minimap";
 import { updateGame } from "./render/renderer";
 import { enableProtection } from "./security";
 import { hookTouchEvents } from "./utils/dom";
+import { bindAccountCard } from "./ui/account/accountCard";
 import { buildActionBar } from "./ui/actionBar";
+import { bindAdminMenu, closeAdminMenu, toggleAdminMenu } from "./ui/admin";
 import { closeAlliance, isAllianceOpen, toggleAlliance } from "./ui/alliance";
+import { bindClanCard } from "./ui/cards/clan";
+import { bindConfirmCard } from "./ui/cards/confirm";
+import { bindProfileCard } from "./ui/cards/profile";
 import { ui } from "./ui/elements";
-import { animateDeathText, isChatOpen, toggleChat } from "./ui/hud";
+import { bindFriendList } from "./ui/friends/friendList";
+import { bindNotices, showFriendRequest, showGameInvite, showPresenceNote } from "./ui/friends/notices";
+import { bindGameMenu, closeGameMenu, toggleGameMenu } from "./ui/gameMenu";
+import { animateDeathText, closeChat, countFrame, isChatOpen, toggleChat } from "./ui/hud";
 import { hideItemInfo } from "./ui/itemInfo";
-import { injectStylesheets } from "./ui/stylesheets";
+import { bindLifecycle, handleGameEscape } from "./ui/lifecycle";
 import {
-  bindPageChrome, bindServerSelect, bindSettingToggles, buildServerList,
-  buildSkinColorPicker, loadSettings, refreshServerList, showMenuCards,
-  showMenuStatus, toggleSettings,
+  bindMenuViews, bindNameField, bindPageChrome, bindPlayButtons, bindServerPicker, bindSettingToggles,
+  bindSkinPicker, bindTopBoard, bindVerifyDialog, initTopSpot, isMenuVisible, loadSettings,
+  mountKeybindSettings, showMenuCards, showMenuStatus, startPlay,
 } from "./ui/menu";
+import { isAlive } from "./ui/netBridge";
+import { refreshNoteDots } from "./ui/noteDots";
+import { injectStylesheets } from "./ui/stylesheets";
 import { closeStore, setStoreTab, toggleStore } from "./ui/store";
 
 declare global {
@@ -34,50 +47,42 @@ declare global {
   }
 }
 
+const SERVER_POLL_INTERVAL = 5000;
+
 export function boot(): void {
   enableProtection();
   void injectStylesheets();
 
   exposeGlobals();
+  initInputMode();
 
   loadSettings();
   bindSettingToggles();
-  buildSkinColorPicker();
+  mountKeybindSettings();
+  bindSkinPicker();
   buildActionBar();
   createBackgroundMenu();
 
-  bindMenuButtons();
-  bindPageChrome();
-  initTurnstile(updateEnterButton);
+  bindCards();
+  bindMenu();
+  bindGameButtons();
+  bindAccounts();
+
+  initTurnstile();
   installInputHandlers({
+    isPlaying: isAlive,
     toggleChat,
-    closeMenus: closeAllMenus,
-    canUseHotkeys: () => !isAllianceOpen() && !isChatOpen(),
+    escape: handleGameEscape,
+    canUseHotkeys: () => !isAllianceOpen() && !isChatOpen() && !isCapturingKey(),
+    canToggleChat: () => !isAllianceOpen(),
   });
 
   canvas.oncontextmenu = () => false;
 
-  showMenuStatus("Loading servers...");
-  serverBrowser.onUpdate = () => refreshServerList(serverBrowser);
-  void serverBrowser
-    .load(serverListUrl())
-    .then(() => {
-      buildServerList(serverBrowser);
-      bindServerSelect(serverBrowser);
-      setCaptchaRequired(!serverBrowser.isLocalSelected());
-      showMenuCards();
-    })
-    .catch((error) => {
-      console.error("Failed to load server list:", error);
-      showMenuStatus("Could not reach the server list.", true);
-    });
+  showMenuStatus("Loading...");
+  startServerList();
 
   requestAnimationFrame(frame);
-}
-
-function updateEnterButton(hasToken: boolean): void {
-  const ready = hasToken || !isCaptchaRequired();
-  ui.enterGameButton.classList.toggle("disabled", !ready);
 }
 
 function exposeGlobals(): void {
@@ -87,44 +92,106 @@ function exposeGlobals(): void {
   window.config = config;
 }
 
-function closeAllMenus(): void {
+function bindCards(): void {
+  bindConfirmCard();
+  bindAccountCard();
+  bindProfileCard();
+  bindClanCard();
+  bindFriendList();
+  bindNotices();
+}
+
+function bindMenu(): void {
+  bindMenuViews();
+  bindNameField(startPlay);
+  bindPlayButtons();
+  bindVerifyDialog();
+  bindServerPicker();
+  bindTopBoard();
+  bindPageChrome();
+  bindLifecycle();
+}
+
+function closeOtherPanels(): void {
   closeStore();
   closeAlliance();
+  closeGameMenu();
+  closeAdminMenu();
+  closeChat();
+  clearHeldKeys();
   hideItemInfo();
 }
 
-function bindMenuButtons(): void {
-  ui.enterGameButton.onclick = () => {
-    if (ui.enterGameButton.classList.contains("disabled")) return;
-    showMenuStatus("Connecting...");
-    if (connection.isReady()) joinGame();
-    else connectToServer();
+function bindGameButtons(): void {
+  const bind = (el: HTMLElement, onclick: () => void) => {
+    el.onclick = onclick;
+    hookTouchEvents(el);
   };
-  hookTouchEvents(ui.enterGameButton);
 
-  ui.settingsButton.onclick = toggleSettings;
-  hookTouchEvents(ui.settingsButton);
+  bind(ui.allianceButton, toggleAlliance);
+  bind(ui.storeButton, toggleStore);
+  bind(ui.chatButton, toggleChat);
+  bind(ui.menuButton, () => toggleGameMenu(closeOtherPanels));
+  bind(ui.adminButton, () => toggleAdminMenu(closeOtherPanels));
+  bind(ui.autoGatherButton, () => {
+    if (!isAlive()) return;
+    toggleAutoGather();
+    ui.autoGatherButton.classList.toggle("active");
+  });
+  bind(minimapCanvas, pingMinimap);
 
-  ui.allianceButton.onclick = toggleAlliance;
-  hookTouchEvents(ui.allianceButton);
+  bindGameMenu();
+  bindAdminMenu();
+}
 
-  ui.storeButton.onclick = toggleStore;
-  hookTouchEvents(ui.storeButton);
+function bindAccounts(): void {
+  serverBrowser.init({ isMember: auth.isVerified, isStaff });
 
-  ui.chatButton.onclick = toggleChat;
-  hookTouchEvents(ui.chatButton);
-
-  minimapCanvas.onclick = () => connection.send(ClientPacket.PingMap, 1);
-  hookTouchEvents(minimapCanvas);
-
-  ui.nameInput.onkeypress = (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    ui.enterGameButton.onclick?.(event as unknown as PointerEvent);
+  const refreshSocialNav = () => {
+    const social = socialEnabled();
+    const named = social && Boolean(account.name) && friends.available();
+    const guestPrompt = social && !auth.isVerified() && auth.signInAvailable();
+    ui.friendsNav.style.display = named || guestPrompt ? "" : "none";
+    ui.clanNav.style.display = social && (auth.isVerified() || auth.signInAvailable()) ? "" : "none";
+    if (named) void friends.refresh();
+    refreshNoteDots();
   };
-  ui.nameInput.onchange = () => {
-    ui.nameInput.value = (ui.nameInput.value || "").slice(0, config.maxNameLength);
-  };
+  onAccountChange(refreshSocialNav);
+  friends.onChange(() => refreshNoteDots());
+  refreshSocialNav();
+
+  if (socialEnabled()) {
+    friends.init({ onInvite: showGameInvite, onRequest: showFriendRequest, onPresence: showPresenceNote });
+  }
+
+  initAccount();
+  auth.initAuth();
+}
+
+function startServerList(): void {
+  let shown = false;
+  const load = () =>
+    serverBrowser.load(serverListUrl()).then(() => {
+      setLocalServerSelected(serverBrowser.isLocalSelected());
+    });
+
+  setInterval(() => {
+    if (isMenuVisible() && !isAlive()) void load().catch(() => {});
+  }, SERVER_POLL_INTERVAL);
+  setTimeout(() => void load().catch(() => {}), 1000);
+  setTimeout(() => void load().catch(() => {}), 3000);
+
+  void load()
+    .then(() => {
+      if (shown) return;
+      shown = true;
+      showMenuCards();
+      initTopSpot();
+    })
+    .catch((error) => {
+      console.error("Failed to load server list:", error);
+      showMenuStatus("Could not reach the server list.", true);
+    });
 }
 
 function frame(): void {
@@ -135,6 +202,7 @@ function frame(): void {
   sendAimAngle();
   animateDeathText(state.delta);
   updateGame(state.delta);
+  countFrame(state.now);
 
   requestAnimationFrame(frame);
 }

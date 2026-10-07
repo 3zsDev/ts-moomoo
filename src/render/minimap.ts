@@ -8,7 +8,7 @@ const ctx = minimapCanvas.getContext("2d")!;
 
 minimapCanvas.width = 300;
 minimapCanvas.height = 300;
-
+// joshy the retard forgot that minimap only shows main world
 class Ping {
   public x = 0;
   public y = 0;
@@ -59,7 +59,15 @@ export function markCurrentPosition(): void {
   state.playerMarker = { x: me.x, y: me.y };
 }
 
+const REDRAW_INTERVAL = 80;
+let sinceRedraw = 0;
+
 export function renderMinimap(delta: number): void {
+  sinceRedraw += delta;
+  if (sinceRedraw < REDRAW_INTERVAL) return;
+  const elapsed = sinceRedraw;
+  sinceRedraw = 0;
+
   const me = state.me;
   if (!me?.alive) return;
 
@@ -67,14 +75,14 @@ export function renderMinimap(delta: number): void {
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 4;
 
-  for (const ping of pings) ping.update(ctx, delta);
+  for (const ping of pings) ping.update(ctx, elapsed);
 
   ctx.globalAlpha = 1;
   ctx.fillStyle = "#fff";
-  renderCircle(ctx, toMap(me.x), toMap(me.y), 7, true);
+  if (me.x >= 0) renderCircle(ctx, toMap(me.x), toMap(me.y), 7, true);
 
   ctx.fillStyle = "rgba(255,255,255,0.35)";
-  if (me.team) {
+  if (me.team || state.staff) {
     for (let i = 0; i < state.minimapPositions.length; i += 2) {
       renderCircle(ctx, toMap(state.minimapPositions[i]), toMap(state.minimapPositions[i + 1]), 7, true);
     }
@@ -85,10 +93,15 @@ export function renderMinimap(delta: number): void {
   ctx.textAlign = "center";
 
   if (state.deathMarker) {
+    const inFalls = state.deathMarker.x < 0;
     ctx.fillStyle = "#fc5553";
-    ctx.fillText("x", toMap(state.deathMarker.x), toMap(state.deathMarker.y));
+    ctx.fillText(
+      "x",
+      inFalls ? 12 : toMap(state.deathMarker.x),
+      toMap(inFalls ? config.mapScale / 2 : state.deathMarker.y),
+    );
   }
-  if (state.playerMarker) {
+  if (state.playerMarker && state.playerMarker.x >= 0) {
     ctx.fillStyle = "#fff";
     ctx.fillText("x", toMap(state.playerMarker.x), toMap(state.playerMarker.y));
   }

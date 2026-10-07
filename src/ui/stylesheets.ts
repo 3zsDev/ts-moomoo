@@ -4,7 +4,6 @@ const SHEETS = [
   "css/main.css",
   "css/material-icons.css",
   "css/hammersmith-one.css",
-  "css/overrides.css",
 ];
 
 export async function injectStylesheets(): Promise<void> {

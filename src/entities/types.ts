@@ -12,6 +12,19 @@ export interface DamageOverTime {
   doer?: Damageable | null;
 }
 
+export interface LifeStats {
+  wood: number;
+  food: number;
+  stone: number;
+  gold: number;
+  damage: number;
+  animalDamage: number;
+  healing: number;
+  animals: number;
+  bosses: number;
+  animalKills: Record<number, number>;
+}
+
 export interface Damageable extends Positioned {
   sid: number;
   active: boolean;
@@ -34,6 +47,8 @@ export interface Damageable extends Positioned {
   colDmg?: number;
   healCol?: number;
   weaponIndex?: number;
+  stats?: LifeStats;
+  outgoingMult?(): number;
   changeHealth(amount: number, doer?: unknown, source?: unknown): boolean;
   canSee?(other: Positioned | null): boolean;
   addResource?(type: number, amount: number, ignoreXP?: boolean): void;
@@ -48,8 +63,6 @@ export interface Interpolated {
   visible: boolean;
 
   forcePos: boolean;
-  t1?: number;
-  t2?: number;
   x1?: number;
   y1?: number;
   x2?: number;
@@ -57,4 +70,5 @@ export interface Interpolated {
   d1?: number;
   d2?: number;
   dt: number;
+  settle: boolean;
 }

@@ -1,15 +1,29 @@
 import { state, type JoinRequest } from "../game/state";
+import { clearHeldKeys } from "../input";
+import { isClanNameReserved } from "../net/api";
 import { connection } from "../net/Connection";
 import { ClientPacket } from "../net/protocol";
 import { createElement, removeAllChildren } from "../utils/dom";
 import { ui } from "./elements";
+import { closeGameMenu } from "./gameMenu";
+import { closeChat } from "./hud/chat";
+import { SOLO_TRIBE } from "./hud/leaderboard";
+import { refreshNoteDots } from "./noteDots";
 import { closeStore } from "./store";
+
+const CLAN_COLOR = "#ffd34d";
+let createError = "";
+
+function clanOf(entry: unknown): string | undefined {
+  return (entry as { clan?: string } | null)?.clan || undefined;
+}
 
 export function isAllianceOpen(): boolean {
   return ui.allianceMenu.style.display === "block";
 }
 
 export function toggleAlliance(): void {
+  clearHeldKeys();
   if (isAllianceOpen()) closeAlliance();
   else refreshAlliance();
 }
@@ -19,15 +33,22 @@ export function closeAlliance(): void {
 }
 
 export function refreshAlliance(): void {
+  if (!isAllianceOpen()) createError = "";
   const me = state.me;
   if (!me?.alive) return;
 
+  closeChat();
   closeStore();
+  closeGameMenu();
   ui.allianceMenu.style.display = "block";
 
   removeAllChildren(ui.allianceHolder);
   if (me.team) renderOwnTribe();
   else renderTribeList();
+
+  if (createError && !me.team) {
+    createElement({ class: "allianceItem allianceError", text: createError, parent: ui.allianceHolder });
+  }
 
   removeAllChildren(ui.allianceManager);
   if (me.team) renderLeaveControls();
@@ -37,6 +58,13 @@ export function refreshAlliance(): void {
 function renderOwnTribe(): void {
   const me = state.me!;
   const members = state.allianceMembers;
+
+  const count = members.length / 2;
+  createElement({
+    class: "allianceItem allianceTitle",
+    text: `[${me.team}] � ${count} member${count === 1 ? "" : "s"}`,
+    parent: ui.allianceHolder,
+  });
 
   for (let i = 0; i < members.length; i += 2) {
     const sid = members[i] as number;
@@ -67,13 +95,17 @@ function renderTribeList(): void {
     return;
   }
 
+  const myClan = clanOf(state.me);
   for (const alliance of state.alliances) {
+    const clan = clanOf(alliance);
     const row = createElement({
       class: "allianceItem",
-      style: "color:rgba(255,255,255,0.6)",
-      text: alliance.sid,
+      style: `color:${clan ? CLAN_COLOR : "rgba(255,255,255,0.6)"}`,
+      text: alliance.sid + (clan ? " � clan" : ""),
       parent: ui.allianceHolder,
     });
+
+    if (clan && alliance.sid !== myClan) continue;
     createElement({
       class: "joinAlBtn",
       text: "Join",
@@ -126,7 +158,19 @@ function renderCreateControls(): void {
 
 export function createAlliance(): void {
   const input = document.getElementById("allianceInput") as HTMLInputElement | null;
-  if (input) connection.send(ClientPacket.CreateClan, input.value);
+  const name = input?.value ?? "";
+  if (!name.trim()) return;
+  createError = "";
+
+  void isClanNameReserved(name).then((reserved) => {
+    if (!reserved) {
+      connection.send(ClientPacket.CreateClan, name);
+      return;
+    }
+    const solo = name.trim().toLowerCase() === SOLO_TRIBE;
+    createError = `"${name}" is reserved${solo ? "" : ": it is a clan's name"}`;
+    if (isAllianceOpen()) refreshAlliance();
+  });
 }
 
 export function leaveAlliance(): void {
@@ -158,6 +202,7 @@ export function answerJoinRequest(accepted: boolean): void {
 }
 
 export function refreshNotifications(): void {
+  refreshNoteDots();
   const request = state.joinRequests[0];
   if (!request) {
     ui.notificationDisplay.style.display = "none";

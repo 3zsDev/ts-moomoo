@@ -2,9 +2,10 @@
   "regions": [
     {
       "region": "0",
+      "regionName": "Local",
       "host": "localhost",
       "servers": [
-        { "name": "local", "index": 0, "port": 3000, "playerCapacity": 40 }
+        { "name": "1", "index": 0, "port": 3000, "playerCapacity": 40 }
       ]
     }
   ]

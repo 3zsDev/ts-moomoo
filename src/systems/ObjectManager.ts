@@ -111,6 +111,8 @@ export class ObjectManager {
     const riverBottom = this.config.mapScale / 2 + this.config.riverWidth / 2;
     const inRiver = y >= riverTop && y <= riverBottom;
 
+    // nothing can be built in falls
+    if (!isConsumable && x < 0) return false;
     return !(!isConsumable && itemId !== 18 && inRiver);
   }
 

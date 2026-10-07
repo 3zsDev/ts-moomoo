@@ -35,6 +35,8 @@ export const ServerPacket = {
   ShowText: "8",
   PingMap: "9",
   PingSocketResponse: "0",
+  BossTelegraph: "W",
+  PlayerStats: "F",
 } as const;
 
 export type ServerPacketType = (typeof ServerPacket)[keyof typeof ServerPacket];
@@ -43,5 +45,5 @@ export type ServerPacketType = (typeof ServerPacket)[keyof typeof ServerPacket];
 export const SERVER_CODES = [
   "A", "B", "C", "D", "E", "a", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
   "Q", "R", "S", "T", "U", "V", "X", "Y", "Z", "g", "1", "2", "3", "4", "5", "6",
-  "7", "8", "9", "0",
+  "7", "8", "9", "0", "W", "F",
 ];

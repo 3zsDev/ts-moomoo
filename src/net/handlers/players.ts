@@ -1,12 +1,13 @@
 import type { PlayerInitData } from "../../entities/Player";
 import { findPlayerBySid } from "../../game/lookups";
 import { state } from "../../game/state";
-import { getOrCreatePlayer, players, removePlayerById } from "../../game/world";
+import { getOrCreatePlayer, removePlayerById } from "../../game/world";
 import { refreshActionBar } from "../../ui/actionBar";
 import { ui } from "../../ui/elements";
 import { refreshAge } from "../../ui/hud/ageBar";
 import { refreshResources } from "../../ui/hud/resources";
 import { refreshUpgrades } from "../../ui/upgrades";
+import { spawned } from "./session";
 
 export function addPlayer(data: PlayerInitData, isYou: boolean): void {
   const player = getOrCreatePlayer(data[0], data[1]);
@@ -28,6 +29,7 @@ export function addPlayer(data: PlayerInitData, isYou: boolean): void {
   refreshResources();
   refreshAge();
   refreshUpgrades(0);
+  spawned();
   ui.gameUI.style.display = "block";
 }
 
@@ -35,39 +37,45 @@ export function removePlayer(id: string): void {
   removePlayerById(id);
 }
 
-export function updatePlayers(data: (number | string | null)[]): void {
-  const now = Date.now();
-
-  for (const player of players) {
-    player.forcePos = !player.visible;
-    player.visible = false;
-  }
-
-  for (let i = 0; i < data.length; i += 13) {
-    const player = findPlayerBySid(data[i] as number);
+export function updatePlayers(
+  positions: number[] = [], attributes: (number | string | null)[] = [], hidden: number[] = [],
+): void {
+  for (let i = 0; i < positions.length; i += 4) {
+    const player = findPlayerBySid(positions[i]);
     if (!player) continue;
 
-    player.t1 = player.t2 === undefined ? now : player.t2;
-    player.t2 = now;
+    const x = positions[i + 1];
+    const y = positions[i + 2];
+    player.forcePos = !player.visible;
     player.x1 = player.x;
     player.y1 = player.y;
-    player.d1 = player.d2 === undefined ? (data[i + 3] as number) : player.d2;
-
-    player.x2 = data[i + 1] as number;
-    player.y2 = data[i + 2] as number;
-    player.d2 = data[i + 3] as number;
+    player.settle = player.x2 === x && player.y2 === y;
+    player.x2 = x;
+    player.y2 = y;
+    player.d2 = positions[i + 3] / 100;
+    player.d1 = player.forcePos ? player.d2 : player.dir;
     player.dt = 0;
-
-    player.buildIndex = data[i + 4] as number;
-    player.weaponIndex = data[i + 5] as number;
-    player.weaponVariant = data[i + 6] as number;
-    player.team = data[i + 7] as string | null;
-    player.isLeader = !!data[i + 8];
-    player.skinIndex = data[i + 9] as number;
-    player.tailIndex = data[i + 10] as number;
-    player.iconIndex = data[i + 11] as number;
-    player.zIndex = data[i + 12] as number;
     player.visible = true;
+  }
+
+  for (let i = 0; i < attributes.length; i += 10) {
+    const player = findPlayerBySid(attributes[i] as number);
+    if (!player) continue;
+
+    player.buildIndex = attributes[i + 1] as number;
+    player.weaponIndex = attributes[i + 2] as number;
+    player.weaponVariant = attributes[i + 3] as number;
+    player.team = attributes[i + 4] as string | null;
+    player.isLeader = !!attributes[i + 5];
+    player.skinIndex = attributes[i + 6] as number;
+    player.tailIndex = attributes[i + 7] as number;
+    player.iconIndex = attributes[i + 8] as number;
+    player.zIndex = attributes[i + 9] as number;
+  }
+
+  for (const sid of hidden) {
+    const player = findPlayerBySid(sid);
+    if (player) player.visible = false;
   }
 }
 
@@ -76,8 +84,8 @@ export function updateHealth(sid: number, health: number): void {
   if (player) player.health = health;
 }
 
-export function gatherAnimation(sid: number, didHit: number, weaponIndex: number): void {
-  findPlayerBySid(sid)?.startAnim(!!didHit, weaponIndex);
+export function gatherAnimation(sid: number, didHit: number, weaponIndex: number, speedMult?: number): void {
+  findPlayerBySid(sid)?.startAnim(!!didHit, weaponIndex, speedMult);
 }
 
 export function updatePlayerValue(name: string, value: number, updateHud: number): void {

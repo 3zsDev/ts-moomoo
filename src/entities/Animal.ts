@@ -1,13 +1,27 @@
-import type { GameConfig } from "../config";
+import { accessoryEffect, type GameConfig } from "../config";
 import type { AnimalType } from "../data/animals";
 import type { ObjectManager } from "../systems/ObjectManager";
 import { SwingAnimation } from "./SwingAnimation";
 import type { Damageable, DamageOverTime, Interpolated, Positioned, ServerHooks } from "./types";
 import { turnToward } from "../utils/angles";
 import { getDirection, getDistance } from "../utils/geometry";
+import { confineToWorld, inShallows } from "../utils/falls";
 import { clamp, randFloat, randInt } from "../utils/math";
 
 export type ScoreAward = (player: Damageable, amount: number) => void;
+// joshy boy made all brain logic serverside which is super gay
+export interface AnimalController {
+  update(animal: Animal, delta: number): boolean;
+  onDeath?(animal: Animal, killer: Damageable | undefined): void;
+}
+
+export const AnimalState = {
+  Surfaced: 0,
+  Diving: 1,
+  Submerged: 2,
+  Surfacing: 3,
+} as const;
+
 export class Animal implements Damageable, Interpolated {
   public readonly sid: number;
   public readonly isAI = true;
@@ -25,6 +39,15 @@ export class Animal implements Damageable, Interpolated {
   public name?: string;
   public nameScale?: number;
   public spriteMlt?: number;
+  public boss?: boolean;
+  public diver?: boolean;
+
+  public state = 0;
+  public stateAt = 0;
+  public isBoss = false;
+  public controller: AnimalController | null = null;
+  public despawnOnDeath = false;
+  public spawnPoint: (() => [number, number]) | null = null;
 
   public active = false;
   public alive = false;
@@ -69,8 +92,6 @@ export class Animal implements Damageable, Interpolated {
 
   public visible = false;
   public forcePos = false;
-  public t1?: number;
-  public t2?: number;
   public x1?: number;
   public y1?: number;
   public x2?: number;
@@ -78,6 +99,7 @@ export class Animal implements Damageable, Interpolated {
   public d1?: number;
   public d2?: number;
   public dt = 0;
+  public settle = false;
 
   private dotTimer = 0;
 
@@ -113,6 +135,14 @@ export class Animal implements Damageable, Interpolated {
     if (type.name) this.name = type.name;
     this.nameScale = type.nameScale;
     this.spriteMlt = type.spriteMlt;
+    this.boss = type.boss;
+    this.diver = type.diver;
+    this.isBoss = !!type.boss;
+    this.state = 0;
+    this.stateAt = Date.now();
+    this.controller = null;
+    this.despawnOnDeath = false;
+    this.spawnPoint = null;
 
     this.weightM = type.weightM;
     this.speed = type.speed;
@@ -166,7 +196,8 @@ export class Animal implements Damageable, Interpolated {
     let speedMultiplier = 1;
 
     const inRiver =
-      !this.zIndex && !this.lockMove &&
+      !this.zIndex && !this.lockMove && !this.diver && !this.boss &&
+      this.x >= 0 && !inShallows(this.x, this.y) &&
       this.y >= this.config.mapScale / 2 - this.config.riverWidth / 2 &&
       this.y <= this.config.mapScale / 2 + this.config.riverWidth / 2;
     if (inRiver) {
@@ -174,7 +205,9 @@ export class Animal implements Damageable, Interpolated {
       this.xVel += this.config.waterCurrent * delta;
     }
 
-    if (this.lockMove) {
+    if (this.controller?.update(this, delta)) {
+      // moved by the controller
+    } else if (this.lockMove) {
       this.xVel = 0;
       this.yVel = 0;
     } else if (this.waitCount > 0) {
@@ -190,7 +223,7 @@ export class Animal implements Damageable, Interpolated {
     this.integrateMovement(delta);
 
     const swungThisFrame = this.tickMeleeWindup(delta);
-    if (charging || swungThisFrame) this.applyContactDamage(swungThisFrame);
+    if ((charging || swungThisFrame) && this.state === 0) this.applyContactDamage(swungThisFrame);
 
     if (this.xVel) this.xVel *= Math.pow(this.config.playerDecel, delta);
     if (this.yVel) this.yVel *= Math.pow(this.config.playerDecel, delta);
@@ -338,26 +371,20 @@ export class Animal implements Damageable, Interpolated {
     }
   }
 
+  public setState(state: number): void {
+    if (this.state === state) return;
+    this.state = state;
+    this.stateAt = Date.now();
+  }
+
   private clampToMap(): void {
-    const r = this.scale;
-    if (this.x - r < 0) {
-      this.x = r;
-      this.xVel = 0;
-    } else if (this.x + r > this.config.mapScale) {
-      this.x = this.config.mapScale - r;
-      this.xVel = 0;
-    }
-    if (this.y - r < 0) {
-      this.y = r;
-      this.yVel = 0;
-    } else if (this.y + r > this.config.mapScale) {
-      this.y = this.config.mapScale - r;
-      this.yVel = 0;
-    }
+    confineToWorld(this, this.config.mapScale, !!this.diver || !!this.boss);
   }
 
   private moveToSpawnPoint(): void {
-    if (this.minSpawnRange || this.maxSpawnRange) {
+    if (this.spawnPoint) {
+      [this.x, this.y] = this.spawnPoint();
+    } else if (this.minSpawnRange || this.maxSpawnRange) {
       const min = this.config.mapScale * (this.minSpawnRange ?? 0);
       const max = this.config.mapScale * (this.maxSpawnRange ?? 1);
       this.x = randInt(min, max);
@@ -370,8 +397,12 @@ export class Animal implements Damageable, Interpolated {
 
   public changeHealth(amount: number, doer?: unknown, source?: unknown): boolean {
     if (!this.active) return true;
+    if (amount < 0 && this.state !== 0) return false;
 
     this.health += amount;
+
+    const dealer = doer as Damageable | undefined;
+    if (amount < 0 && dealer?.isPlayer && dealer.stats) dealer.stats.animalDamage -= amount;
 
     const attacker = source as Damageable | undefined;
     if (attacker) {
@@ -399,6 +430,20 @@ export class Animal implements Damageable, Interpolated {
 
     if (this.health > 0) return true;
 
+    if (killer?.isPlayer && killer.stats) {
+      killer.stats.animals++;
+      if (this.boss) killer.stats.bosses++;
+      killer.stats.animalKills[this.index] = (killer.stats.animalKills[this.index] ?? 0) + 1;
+    }
+    this.controller?.onDeath?.(this, killer);
+
+    if (this.despawnOnDeath) {
+      this.active = false;
+      this.alive = false;
+      if (killer) this.awardScore?.(killer, this.killScore);
+      return true;
+    }
+
     if (this.spawnDelay) {
       this.spawnCounter = this.spawnDelay;
       this.x = -1000000;
@@ -411,10 +456,11 @@ export class Animal implements Damageable, Interpolated {
     this.runFrom = null;
 
     if (killer) {
-      this.awardScore?.(killer, this.killScore);
+      const cowMult = this.index === 0 ? accessoryEffect(killer.tail)?.cowRewardMult ?? 1 : 1;
+      this.awardScore?.(killer, Math.round(this.killScore * cowMult));
       if (this.drop) {
         const [resource, amountDropped] = this.drop;
-        killer.addResource?.(this.config.resourceTypes.indexOf(resource as never), amountDropped);
+        killer.addResource?.(this.config.resourceTypes.indexOf(resource as never), Math.round(amountDropped * cowMult));
       }
     }
     return true;

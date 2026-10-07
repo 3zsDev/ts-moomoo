@@ -8,7 +8,41 @@ import { actionBarSlotId, ITEM_INDEX_OFFSET } from "./actionBar";
 import { ui } from "./elements";
 import { hideItemInfo, showItemInfo } from "./itemInfo";
 
+export function hideButtonsUnderUpgrades(): void {
+  const choices = ui.upgradeHolder.style.display === "block" ? Array.from(ui.upgradeHolder.children) : [];
+  let area: { left: number; right: number; top: number; bottom: number } | null = null;
+
+  for (const choice of choices) {
+    const rect = choice.getBoundingClientRect();
+    if (!rect.width) continue;
+    area = area
+      ? {
+          left: Math.min(area.left, rect.left),
+          right: Math.max(area.right, rect.right),
+          top: Math.min(area.top, rect.top),
+          bottom: Math.max(area.bottom, rect.bottom),
+        }
+      : rect;
+  }
+
+  for (const button of document.querySelectorAll<HTMLElement>("#gameUI .gameButton")) {
+    button.style.visibility = "";
+    const rect = button.getBoundingClientRect();
+    const covered = Boolean(area) && rect.width > 0 &&
+      rect.left < area!.right + 4 && rect.right > area!.left - 4 &&
+      rect.top < area!.bottom + 4 && rect.bottom > area!.top - 4;
+    button.style.visibility = covered ? "hidden" : "";
+  }
+}
+
+window.addEventListener("resize", hideButtonsUnderUpgrades);
+
 export function refreshUpgrades(points: number, age?: number): void {
+  showUpgrades(points, age);
+  hideButtonsUnderUpgrades();
+}
+
+function showUpgrades(points: number, age?: number): void {
   const me = state.me;
   if (!me) return;
 

@@ -5,6 +5,7 @@ export interface Cosmetic {
   price: number;
   scale: number;
   dontSell?: boolean;
+  earned?: boolean;
   topSprite?: boolean;
   xOff?: number;
   spin?: boolean;

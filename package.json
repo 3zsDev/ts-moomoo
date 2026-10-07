@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "moomoo 1.8.2 in typescript",
+  "description": "moomoo 1.9.0 in typescript",
   "scripts": {
     "build": "node build.mjs",
     "build:game": "node build.mjs --game",
@@ -17,10 +17,15 @@
     "backend": "node backend/dist/server.mjs",
     "play": "node run.mjs",
     "sandbox": "node run.mjs --sandbox",
-    "ws": "node run.mjs --ws"
+    "ws": "node run.mjs --ws",
+    "diff:live": "node scripts/diff-live.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.10",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "bad-words": "^4.1.5",
+    "nipplejs": "^1.0.4"
   }
 }

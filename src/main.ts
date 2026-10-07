@@ -1,10 +1,9 @@
-import { installPageStubs } from "./pageStubs";
+import { initializeFrvrSdk } from "./pageStubs";
 import { installPageShell } from "./ui/pageShell";
-
-installPageStubs();
 
 async function start(): Promise<void> {
   await installPageShell();
+  await initializeFrvrSdk();
 
   const { boot } = await import("./boot");
   boot();

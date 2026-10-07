@@ -1,3 +1,4 @@
+import { addTelegraph } from "../../render/layers/telegraphs";
 import { refreshLeaderboard } from "../../ui/hud/leaderboard";
 import { serverShutdownNotice } from "../../ui/hud/ping";
 import { applyStoreUpdate } from "../../ui/store";
@@ -9,10 +10,15 @@ import * as misc from "./misc";
 import * as players from "./players";
 import * as projectiles from "./projectiles";
 import * as session from "./session";
+import * as staff from "./staff";
 import * as world from "./world";
 
 export type { HandlerHooks } from "./session";
 export { markPingSent } from "./misc";
+export {
+  onPlayerStats, reportPlayer, requestPlayerStats, sendAdminCommand,
+  type PlayerStats, type ReportAction,
+} from "./staff";
 
 export function createHandlers(hooks: session.HandlerHooks): PacketHandlers {
   session.setHooks(hooks);
@@ -43,6 +49,8 @@ export function createHandlers(hooks: session.HandlerHooks): PacketHandlers {
 
     [ServerPacket.LoadAI]: animals.loadAI,
     [ServerPacket.AnimateAI]: animals.animateAI,
+    [ServerPacket.BossTelegraph]: addTelegraph,
+    [ServerPacket.PlayerStats]: staff.playerStats,
 
     [ServerPacket.AddProjectile]: projectiles.addProjectile,
     [ServerPacket.RemoveProjectile]: projectiles.removeProjectile,

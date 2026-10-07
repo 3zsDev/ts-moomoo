@@ -41,7 +41,8 @@ On Windows you can right-click the folder → *Open in Terminal*.
 npm install
 ```
 
-This downloads esbuild and TypeScript into a `node_modules/` folder. It only needs
+This downloads esbuild, TypeScript and nipplejs (the mobile touch joysticks, bundled
+into the client) into a `node_modules/` folder. It only needs
 to be done once, and only in the root — the `backend/` and `api/` folders have no
 dependencies of their own.
 
@@ -72,7 +73,7 @@ That's the whole happy path. The rest of this page explains the pieces.
 | --- | --- | --- |
 | **Client** | `src/` | The game itself — rendering, input, UI. Compiled into one `bundle.js`. |
 | **Backend** | `backend/src/` | The game server: physics, mobs, players, the websocket protocol. |
-| **API** | `api/` | The server-list / matchmaking service. Also serves the built client as a normal web page. |
+| **API** | `api/` | Server list, join tickets, accounts, names, profiles, clans, top boards and moderation. Saves to `api/data/db.json`. Also serves the built client as a normal web page. |
 | **Extension** | built from `src/` | The same client, packaged as a Chrome extension that replaces the real moomoo.io page. |
 
 `npm run play` starts a game server, a sandbox server, and the API together, which is
@@ -120,6 +121,7 @@ before starting.
 | `watch` | Rebuilds the game bundle every time you save a source file. Dev mode: sourcemaps on, no minification, extension not built. |
 | `serve` | Same as `watch`, plus a dev web server on <http://localhost:5173>. |
 | `typecheck` | Runs `tsc --noEmit` over the client and the backend. Reports type errors without producing any files. |
+| `diff:live` | Compares a zip from `scripts/live-dump.js` (paste it into the DevTools console on moomoo.io) against `public/`: `npm run diff:live -- live-moomoo.io-….zip`. Add `--apply` to copy new and changed assets into `public/`. |
 
 A typical loop: run `npm run play` in one terminal to get the servers up, and
 `npm run watch` in a second terminal so your client edits rebuild automatically.
@@ -170,8 +172,18 @@ the API all read them.
 | `GAME_SANDBOX` | `0` | `1` = run as a sandbox server |
 | `GAME_WS_ONLY` | — | `1` = same as passing `--ws` |
 | `GAME_PEER_URL` | — | URL of the paired server, for the in-game server switcher |
-| `API_URL` | `http://localhost:8080` | Where the server sends its heartbeats |
+| `API_URL` | `http://localhost:8080` | Where the game server finds the API (heartbeats, tickets, stats, reports, and the account calls it passes on) |
 | `PUBLIC_DIR` | `dist/game` | Folder to serve static files from |
+| `GAME_API` | `1` | `0` = run the game server without the API: everyone plays as a guest. `npm run play -- --no-api` sets this |
+| `GAME_ADMIN` | — | `1` = same as passing `--admin`: every player can use admin commands. Local testing only |
+| `GAME_REQUIRE_TICKET` | — | `1` = refuse sockets that didn't get a `/join` ticket or pass the captcha |
+| `GAME_MEMBERS_ONLY` | — | `1` = only signed-in players may join. The server list shows a shield |
+| `GAME_SHUTDOWN_NOTICE` | `0` | Seconds of "Server restarting in m:ss" before a SIGTERM shuts the server down. Ctrl+C always stops right away |
+| `API_DATA` | `api/data/db.json` | Where the API saves accounts, clans and stats |
+| `API_ADMINS` | — | Comma-separated emails or account ids that are always admins |
+| `API_JWKS_URL` | — | JWKS for checking account token signatures. Without it tokens are only decoded, which is fine locally but **must be set on a public server** |
+| `TURNSTILE_SECRET` | — | Cloudflare Turnstile secret. Without it captcha tokens aren't checked |
+| `INTERNAL_KEY` | — | Shared secret between the API and game servers. Without it, only calls from the same machine are trusted |
 
 Setting one for a single run:
 
@@ -199,6 +211,182 @@ forwards them along:
 ```
 npm run play -- --no-build --no-api
 ```
+
+## Accounts, sign-in and URL flags
+
+The live game signs players in through the locally hosted readable FRVR SDK ports
+(`window.FRVR.auth` / `FRVR.social`). Each build emits and includes those modules and
+the TypeScript Howler port from `public/libs`.
+
+Ads are disabled by default. Set `enabled: true` in `src/config/ads.ts` to opt in; set
+it back to `false` to disable all configured ad providers. The Google publisher ID and
+provider list can be changed in the same file. The standalone local build continues to
+use compatibility stubs and guest play.
+
+### The local account API
+
+`npm run play` starts the API too, and the pages on `:3000` / `:3001` / `:8080` switch the
+account features on by themselves. The game servers pass the account calls on to the API, so
+nothing else needs setting up. What works:
+
+- **Accounts and names.** The first name a signed-in player picks becomes theirs for good, and guests can't use it.
+- **Profiles.** Lifetime, day, week and month stats are saved when a signed-in player dies or leaves. Sandbox lives aren't saved. Socials are set on the profile.
+- **Clans.** Create, invite, request, roles, kick, leave and disband. A tribe named after a clan is only open to that clan's members. Nobody can name a tribe `solo`.
+- **Top boards.** Week, month and all-time boards for players and clans.
+- **Moderation.** Reports, kick, ban, IP ban, shadow, clear, and making or removing mods. A shadowed player's chat only reaches themselves, and they drop off the public top boards. Kicks and bans reach players on every running game server.
+- **Join tickets.** `/join` hands out one-use tickets, which the game server checks before it lets a socket in.
+
+Friends themselves still run on FRVR's servers. The API only provides the names and the
+friend-request limit.
+
+To make yourself an admin, use a dev token (below) and start with
+`API_ADMINS=me@example.com`. Admins get the in-game admin menu, with no `--admin` needed.
+
+For working on the account UI there are a few opt-in switches (localhost only):
+
+| Flag | Effect |
+| --- | --- |
+| `?api=local` | Turns the account calls on for a page that our servers didn't serve (for example `npm run serve` on `:5173`). They go to the page's own origin. |
+| `localStorage.moo_dev_frvr_token` | A JWT used instead of an FRVR token. Its payload's `extra.verified` / `extra.identifier` make you a signed-in, verified player. Example (DevTools console): `localStorage.moo_dev_frvr_token = "x." + btoa(JSON.stringify({extra: {verified: true, identifier: "me@example.com"}})) + ".y"` |
+| `?cf=1` | Use Cloudflare's always-pass test captcha before connecting (needs internet). Without it, localhost skips the captcha. |
+| `?cf=interactive` | Same, with the test key that always asks for a click, to see the verify dialog. |
+
+The chosen server lives in the URL hash (`#region:name`); the **Invite** button copies
+a link to it. Rebound keys are saved in `localStorage.moo_keybinds` (Settings -> Keys).
+
+---
+
+## What changed from 1.8.2 to 1.9.0
+
+### Gameplay
+
+- **New hats**
+  - Scout Hat (#59): 3500 gold, 1.08x speed, takes 1.12x damage.
+  - Frost Helm (#60): 7000 gold, no snow slowdown, 0.94x speed, takes 0.88x damage.
+  - Crab Shell (#61): can't be bought; dropped by the Crab King. Reflects 30% of damage, takes 0.85x damage, 0.92x speed.
+- **Accessory effects** (`src/config/effects.ts`). Capes and tails that used to be cosmetic now do something:
+  - Snowball / Winter Cape: less or no snow slowdown.
+  - Tree / Stone / Cookie Cape: +1 resource per hit.
+  - Cow Cape: 1.5x from cows.
+  - Skull Cape: 3x gold for killing the kill leader.
+  - Dash Cape: 1.05x speed.
+  - Dragon Cape: 1.05x damage for 5s after hitting a player.
+  - Super Cape: buff after a kill.
+  - Troll Cape: 2x gold for spike kills.
+  - Thorns: heal on hit.
+  - Blockades: 0.75x projectile damage.
+  - Devils Tail: bleed.
+- **Emerald weapon variant** (id 4, `_e` sprites). 1.18x damage, 15% lifesteal, members only; XP alone never unlocks it.
+- **New animals**
+  - Boar (9) and Yeti (10).
+  - Sheep (12).
+  - Crab King boss (11), Crab (13) and Crabling (14).
+  - Animals now have dive/surface states. They can't be hit or deal damage while under water.
+- **The Falls.** A new area west of the map: gorge, pools and waterfall.
+  - Water slows you down.
+  - You can't build there.
+  - It hides you and your teammates from the minimap.
+  - The Crab King lives there, with attack telegraphs: splash, ring, dive, slam and dash.
+- **Combat and controls**
+  - Swing speed is synced with the gather animation.
+  - New on-screen auto-attack button.
+  - Lock rotation is reported to the server.
+  - The alive player with the most kills gets a skull icon.
+
+### Menu & UI
+
+- **Main menu.** Rebuilt into views: Play, How to, Settings, Friends, Clan, Top.
+  - Skin colour picker popover.
+  - Reserved and permanent names.
+  - New region/server dropdowns: fill colour, "Full" tag, shield on members-only servers.
+  - The Invite button copies a `#region:name` link.
+- **New cards**
+  - Sign-in by email code or password.
+  - Player profiles with stats, periods, playtime and socials.
+  - Clans: create, invite, request, roles, kick, leave, disband.
+  - Friends: requests, presence, game invites.
+  - Generic confirm card.
+- **Top leaderboard.** Week/month/all-time boards for players and clans, plus a rotating "of the week" spotlight under the menu.
+- **Captcha.** The Cloudflare Turnstile check now runs in a modal, with retry and blocked states. Signed-in players skip it.
+- **In-game menu.** Opened with the Menu button or Esc; tabs for Settings, Friends, Clan and Report.
+  - Admins also get an admin menu: powers, size/damage/speed/health, spawn, teleport, give items.
+- **In-game leaderboard**
+  - Role and friend badges.
+  - Crab King killer badge.
+  - Skull for dead players.
+  - Clickable `[tribe:CLAN]` tags.
+  - Shown while the button is held.
+- **Settings**
+  - Ping display with colour tiers.
+  - Show FPS.
+  - Account preferences.
+  - Native resolution on by default, capped at 2x.
+- **Keybinds.** Fully rebindable (Settings → Keys); arrow keys always move.
+- **Mobile.** Joysticks (nipplejs) and automatic touch/mouse detection.
+- **Look.** Floating animated title; dynamic full-screen viewport instead of a letterboxed 1920×1080.
+  - Material Icons are served locally.
+  - `main.css` is now minified.
+
+### Accounts & networking
+
+- **FRVR SDK port.** Ported to TypeScript (`src/sdk-libs`) and built into `public/libs`. Ads are off by default (`src/config/ads.ts`).
+- **REST layer.** New in `src/net/api/`: `/join` tickets, `/account`, `/name`, `/profile`, `/clan/*`, `/top`, friends helpers.
+- **New packets**
+  - Client → server: `R` report, `A` admin command, `V` request player stats.
+  - Server → client: `W` boss telegraph, `F` player stats.
+- **Changed packets**
+  - `a` players: positions, attributes and hidden lists.
+  - `I` animals: adds state, direction ×100 and a hidden list.
+  - `C` sends the numeric sid.
+  - `G` leaderboard: by sid, with roles, dead, crab-killer and clan/tribe tag lists.
+  - `K` gather: adds swing speed.
+  - Player data: adds aura, boss mode and clan.
+- **Cipher.** New full shuffled mode, an optional build salt, and an optional pinned mode with XOR masks.
+- **Connecting.** Join ticket (`tk:`) or captcha (`cf:`) in `?token=`, and a build id `?b=` off localhost.
+  - Close codes 4001–4004.
+- **Server browser.** Rewritten.
+  - Per-region ping, region names, members-only servers.
+  - Staff can join full servers.
+  - Selection lives in the URL hash.
+  - Password support removed.
+
+### Backend & tooling
+
+- **Game server.** Speaks the 1.9 packet formats.
+  - The Crab King and crabs are run by `backend/src/sim/game/falls.ts`.
+  - Admin commands live in `backend/src/sim/game/admin.ts` (`--admin` / `GAME_ADMIN=1`).
+  - Live player stats are streamed once a second.
+  - New spawns: sheep, boars, one yeti.
+  - Account support:
+    - Checks join tickets before the handshake.
+    - Locks signed-in players to their account name and clan.
+    - Sends leaderboard roles, dead players, and clan and tribe tags.
+    - Saves stats for each life.
+    - Forwards reports.
+    - Applies kicks, bans and shadows from the API.
+    - Staff see everyone on the minimap and can join full servers.
+  - Sends `B` with a reason before turning a player away, so "server is full" shows instead of "Invalid Connection".
+  - Counts down `Z` "Server restarting" on SIGTERM.
+  - Lock rotation (`K 0`) no longer switches auto-gather off.
+  - Item upgrades respect `allowAllUpgrades`.
+  - Chat is filtered.
+- **API.** Rebuilt from a bare server list into the full account API (see *The local account API* above).
+- **Extension build.** Redirects live CSS, images and fonts to `public/`.
+- **New assets.** Animal, hat and emerald weapon sprites, plus PWA/OG images.
+- **New `npm run diff:live` script.** Plus the `nipplejs` dependency.
+
+### Removed
+
+- The fixed key map (`src/input/bindings.ts`), the old `<select>` server list (`src/ui/menu/serverList.ts`) and `public/css/overrides.css`.
+- Party-key prompts, server passwords, the Krunker promo banner, and the old guide/setup cards.
+
+### Known gaps
+
+- The **Show Grid** checkbox is in the page, but nothing reads it yet.
+- **Emerald** unlocks at 20000 weapon XP for signed-in players only. The admin weapon command can also hand it to guests until they switch weapons.
+- **Clan raid kills** are always 0: the server doesn't track who killed whom yet.
+- **Anti-cheat flags** in the staff panel are always 0.
+- The **Crab King, Crab and Yeti** numbers on our server are inferred, not taken from live.
 
 ---
 

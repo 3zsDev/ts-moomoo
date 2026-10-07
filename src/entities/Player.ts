@@ -1,12 +1,14 @@
-import type { GameConfig, ResourceType } from "../config";
+import { accessoryEffect, type GameConfig, type ResourceType } from "../config";
 import type { Cosmetic } from "../data/cosmetics";
 import type { Item, ItemData } from "../data/items";
 import type { ObjectManager } from "../systems/ObjectManager";
 import type { ProjectileManager } from "../systems/ProjectileManager";
 import { SwingAnimation } from "./SwingAnimation";
-import type { Damageable, DamageOverTime, Interpolated, Positioned, ServerHooks } from "./types";
+import type { WeaponVariant } from "../data/weaponVariants";
+import type { Damageable, DamageOverTime, Interpolated, LifeStats, Positioned, ServerHooks } from "./types";
 import { getAngleDist } from "../utils/angles";
 import { getDirection, getDistance } from "../utils/geometry";
+import { confineToWorld, inFallsWater, inShallows } from "../utils/falls";
 import { clamp, fixTo } from "../utils/math";
 
 export type ScoreAward = (player: Player, amount: number, isGold?: boolean) => void;
@@ -20,7 +22,26 @@ export type PlayerInitData = [
   id: string, sid: number, name: string,
   x: number, y: number, dir: number,
   health: number, maxHealth: number, scale: number, skinColor: number,
+  aura?: number, bossMode?: number, clan?: string | null,
 ];
+
+// admin powers
+export interface PlayerPowers {
+  god: boolean;
+  invisible: boolean;
+  damage: number;
+  speed: number;
+  health: number;
+  size: number;
+}
+
+export function emptyLifeStats(): LifeStats {
+  return {
+    wood: 0, food: 0, stone: 0, gold: 0,
+    damage: 0, animalDamage: 0, healing: 0, animals: 0, bosses: 0, animalKills: {},
+  };
+}
+
 export class Player implements Damageable, Interpolated {
   public id: string;
   public sid: number;
@@ -31,6 +52,11 @@ export class Player implements Damageable, Interpolated {
   public team: string | null = null;
   public isOwner = false;
   public isLeader = false;
+
+  public aura = false;
+  public bossMode = false;
+  public clan: string | null = null;
+  public member = false;
 
   public iconIndex = 0;
 
@@ -97,6 +123,13 @@ export class Player implements Damageable, Interpolated {
   public healCol = 0;
 
   public noMovTimer = 0;
+  public stats: LifeStats = emptyLifeStats();
+  public readonly powers: PlayerPowers = { god: false, invisible: false, damage: 1, speed: 1, health: 1, size: 1 };
+  private hitBuffTimer = 0;
+  private hitBuffMult = 1;
+  private killBuffTimer = 0;
+  private killBuffMult = 1;
+  private killBuffSpeed = 1;
   private lastHitTime = 0;
   private shameCount = 0;
   private shameTimer = 0;
@@ -110,8 +143,7 @@ export class Player implements Damageable, Interpolated {
 
   public visible = false;
   public forcePos = false;
-  public t1?: number;
-  public t2?: number;
+  public settle = false;
   public x1?: number;
   public y1?: number;
   public x2?: number;
@@ -141,8 +173,8 @@ export class Player implements Damageable, Interpolated {
     this.sid = sid;
     this.swing = new SwingAnimation(config.hitReturnRatio);
 
-    for (const accessory of accessories) if (accessory.price <= 0) this.tails[accessory.id] = 1;
-    for (const hat of hats) if (hat.price <= 0) this.skins[hat.id] = 1;
+    for (const accessory of accessories) if (accessory.price <= 0 && !accessory.dontSell) this.tails[accessory.id] = 1;
+    for (const hat of hats) if (hat.price <= 0 && !hat.dontSell) this.skins[hat.id] = 1;
   }
 
   public get dirPlus(): number {
@@ -165,6 +197,9 @@ export class Player implements Damageable, Interpolated {
     this.weaponIndex = 0;
     this.dmgOverTime = {};
     this.noMovTimer = 0;
+    this.stats = emptyLifeStats();
+    this.hitBuffTimer = 0;
+    this.killBuffTimer = 0;
 
     this.maxXP = 300;
     this.XP = 0;
@@ -182,9 +217,9 @@ export class Player implements Damageable, Interpolated {
     this.dir = 0;
     this.targetDir = 0;
 
-    this.maxHealth = 100;
+    this.maxHealth = 100 * this.powers.health;
     this.health = this.maxHealth;
-    this.scale = this.config.playerScale;
+    this.scale = this.config.playerScale * this.powers.size;
     this.speed = this.config.playerSpeed;
 
     this.moveDir = undefined;
@@ -226,12 +261,16 @@ export class Player implements Damageable, Interpolated {
       this.id, this.sid, this.name,
       fixTo(this.x, 2), fixTo(this.y, 2), fixTo(this.dir, 3),
       this.health, this.maxHealth, this.scale, this.skinColor,
+      this.aura ? 1 : 0, this.bossMode ? 1 : 0, this.clan,
     ];
   }
 
   public setData(data: PlayerInitData): void {
     [this.id, this.sid, this.name, this.x, this.y, this.dir,
       this.health, this.maxHealth, this.scale, this.skinColor] = data;
+    this.aura = !!data[10];
+    this.bossMode = !!data[11];
+    this.clan = data[12] || null;
   }
 
   public update(delta: number): void {
@@ -249,6 +288,8 @@ export class Player implements Damageable, Interpolated {
     if (!this.alive) return;
 
     if (this.slowMult < 1) this.slowMult = Math.min(1, this.slowMult + 0.0008 * delta);
+    if (this.hitBuffTimer > 0) this.hitBuffTimer -= delta;
+    if (this.killBuffTimer > 0) this.killBuffTimer -= delta;
 
     this.noMovTimer += delta;
     if (this.xVel || this.yVel) this.noMovTimer = 0;
@@ -289,27 +330,21 @@ export class Player implements Damageable, Interpolated {
   }
 
   private applyInput(delta: number): void {
+    const effect = accessoryEffect(this.tail);
+    const snowFactor = this.skin?.coldM ? 1 : effect?.snowMult ?? this.config.snowSpeed;
+
     let multiplier =
       (this.buildIndex >= 0 ? 0.5 : 1) *
       (this.itemData.weapons[this.weaponIndex].spdMult ?? 1) *
       (this.skin?.spdMult ?? 1) *
       (this.tail?.spdMult ?? 1) *
-      (this.y <= this.config.snowBiomeTop && !this.skin?.coldM ? this.config.snowSpeed : 1) *
+      (effect?.spdMult ?? 1) *
+      (this.killBuffTimer > 0 ? this.killBuffSpeed : 1) *
+      this.powers.speed *
+      (this.y <= this.config.snowBiomeTop ? snowFactor : 1) *
       this.slowMult;
 
-    const inRiver =
-      !this.zIndex &&
-      this.y >= this.config.mapScale / 2 - this.config.riverWidth / 2 &&
-      this.y <= this.config.mapScale / 2 + this.config.riverWidth / 2;
-    if (inRiver) {
-      if (this.skin?.watrImm) {
-        multiplier *= 0.75;
-        this.xVel += this.config.waterCurrent * 0.4 * delta;
-      } else {
-        multiplier *= 0.33;
-        this.xVel += this.config.waterCurrent * delta;
-      }
-    }
+    if (!this.zIndex) multiplier *= this.applyWater(delta);
 
     let dx = this.moveDir != null ? Math.cos(this.moveDir) : 0;
     let dy = this.moveDir != null ? Math.sin(this.moveDir) : 0;
@@ -321,6 +356,23 @@ export class Player implements Damageable, Interpolated {
 
     if (dx) this.xVel += dx * this.speed * multiplier * delta;
     if (dy) this.yVel += dy * this.speed * multiplier * delta;
+  }
+
+  private applyWater(delta: number): number {
+    if (inShallows(this.x, this.y)) return 0.75;
+    if (this.x < 0) return inFallsWater(this.x, this.y) ? (this.skin?.watrImm ? 0.75 : 0.33) : 1;
+
+    const inRiver =
+      this.y >= this.config.mapScale / 2 - this.config.riverWidth / 2 &&
+      this.y <= this.config.mapScale / 2 + this.config.riverWidth / 2;
+    if (!inRiver) return 1;
+
+    if (this.skin?.watrImm) {
+      this.xVel += this.config.waterCurrent * 0.4 * delta;
+      return 0.75;
+    }
+    this.xVel += this.config.waterCurrent * delta;
+    return 0.33;
   }
 
   private integrateMovement(delta: number): void {
@@ -364,8 +416,7 @@ export class Player implements Damageable, Interpolated {
   }
 
   private clampToMap(): void {
-    this.x = clamp(this.x, this.scale, this.config.mapScale - this.scale);
-    this.y = clamp(this.y, this.scale, this.config.mapScale - this.scale);
+    confineToWorld(this, this.config.mapScale);
   }
 
   private tickWeapon(delta: number): void {
@@ -463,6 +514,10 @@ export class Player implements Damageable, Interpolated {
 
   public addResource(type: number, amount: number, skipXP?: boolean): void {
     if (!skipXP && amount > 0) this.addWeaponXP(amount);
+    if (amount > 0) {
+      const stat = type === 3 ? "gold" : this.config.resourceTypes[type] as "wood" | "food" | "stone";
+      this.stats[stat] += amount;
+    }
 
     if (type === 3) {
       this.awardScore?.(this, amount, true);
@@ -592,7 +647,9 @@ export class Player implements Damageable, Interpolated {
         } else {
           this.earnXP(4 * (weapon.gather ?? 0));
 
-          const yieldAmount = (weapon.gather ?? 0) + (obj.type === 3 ? 4 : 0);
+          const bonus = accessoryEffect(this.tail)?.gatherBonus;
+          const yieldAmount = (weapon.gather ?? 0) + (obj.type === 3 ? 4 : 0) +
+            (bonus && bonus[0] === obj.type ? bonus[1] : 0);
           this.addResource(obj.type ?? 0, yieldAmount);
           if (this.skin?.extraGold) this.addResource(3, 1);
         }
@@ -611,14 +668,16 @@ export class Player implements Damageable, Interpolated {
       const angle = getDirection(target.x, target.y, this.x, this.y);
       if (getAngleDist(angle, this.dir) > this.config.gatherAngle) continue;
 
-      this.hitEntity(target, angle, damageMult, variant.poison === true);
+      this.hitEntity(target, angle, variant);
     }
 
     this.sendAnimation(hitSomething);
   }
 
-  private hitEntity(target: Damageable, angle: number, damageMult: number, poison: boolean): void {
+  private hitEntity(target: Damageable, angle: number, variant: WeaponVariant): void {
     const weapon = this.itemData.weapons[this.weaponIndex];
+    const damageMult = variant.val;
+    const poison = variant.poison === true;
 
     if (weapon.steal && target.addResource) {
       const stolen = Math.min((target as Player).points ?? 0, weapon.steal);
@@ -635,7 +694,7 @@ export class Player implements Damageable, Interpolated {
     }
 
     const baseDamage = weapon.dmg ?? 0;
-    const outgoing = baseDamage * (this.skin?.dmgMultO ?? 1) * (this.tail?.dmgMultO ?? 1);
+    const outgoing = baseDamage * (this.skin?.dmgMultO ?? 1) * (this.tail?.dmgMultO ?? 1) * this.outgoingMult();
 
     const knockback = 0.3 * (target.weightM ?? 1) + (weapon.knock ?? 0);
     target.xVel += knockback * Math.cos(angle);
@@ -643,6 +702,7 @@ export class Player implements Damageable, Interpolated {
 
     if (this.skin?.healD) this.changeHealth(outgoing * multiplier * this.skin.healD, this);
     if (this.tail?.healD) this.changeHealth(outgoing * multiplier * this.tail.healD, this);
+    if (variant.lifesteal) this.changeHealth(outgoing * multiplier * variant.lifesteal, this);
 
     if (target.skin?.dmg) this.changeHealth(-baseDamage * target.skin.dmg, target);
     if (target.tail?.dmg) this.changeHealth(-baseDamage * target.tail.dmg, target);
@@ -652,12 +712,15 @@ export class Player implements Damageable, Interpolated {
         target.dmgOverTime.dmg = this.skin.poisonDmg;
         target.dmgOverTime.time = this.skin.poisonTime ?? 1;
         target.dmgOverTime.doer = this;
-      } else if (poison) {
+      }
+      if (poison) {
         target.dmgOverTime.dmg = 5;
         target.dmgOverTime.time = 5;
         target.dmgOverTime.doer = this;
       }
     }
+
+    if (target.isPlayer) this.applyHitEffects(target);
 
     if (target.skin?.dmgK) {
       this.xVel -= target.skin.dmgK * Math.cos(angle);
@@ -667,8 +730,32 @@ export class Player implements Damageable, Interpolated {
     target.changeHealth(-outgoing * multiplier, this, this);
   }
 
-  public changeHealth(amount: number, doer?: unknown): boolean {
+  private applyHitEffects(target: Damageable): void {
+    const effect = accessoryEffect(this.tail);
+    if (!effect) return;
+
+    if (effect.hitHeal) this.changeHealth(effect.hitHeal, this);
+    if (effect.hitBuff) {
+      this.hitBuffTimer = effect.hitBuff.time;
+      this.hitBuffMult = effect.hitBuff.dmg;
+    }
+    const current = target.dmgOverTime;
+    if (effect.bleed && current && !((current.dmg ?? 0) > effect.bleed.dmg)) {
+      current.dmg = effect.bleed.dmg;
+      current.time = effect.bleed.time;
+      current.doer = this;
+    }
+  }
+
+  public outgoingMult(): number {
+    return (this.hitBuffTimer > 0 ? this.hitBuffMult : 1) *
+      (this.killBuffTimer > 0 ? this.killBuffMult : 1) *
+      this.powers.damage;
+  }
+
+  public changeHealth(amount: number, doer?: unknown, source?: unknown): boolean {
     if (amount > 0 && this.health >= this.maxHealth) return false;
+    if (amount < 0 && this.powers.god) return false;
 
     if (amount < 0) {
       amount *= this.skin?.dmgMult ?? 1;
@@ -681,7 +768,13 @@ export class Player implements Damageable, Interpolated {
       amount -= this.health - this.maxHealth;
       this.health = this.maxHealth;
     }
-    if (this.health <= 0) this.kill(doer as Player | undefined);
+    const dealer = doer as Damageable | undefined;
+    if (amount > 0) this.stats.healing += amount;
+    else if (dealer?.isPlayer && dealer !== (this as unknown as Damageable) && dealer.stats) {
+      dealer.stats.damage -= amount;
+    }
+
+    if (this.health <= 0) this.kill(doer as Player | undefined, source);
 
     for (const player of this.players) {
       if (this.sentTo[player.id]) this.server?.send(player.id, "O", this.sid, this.health);
@@ -697,12 +790,20 @@ export class Player implements Damageable, Interpolated {
     return true;
   }
 
-  public kill(killer?: Player): void {
+  public kill(killer?: Player, source?: unknown): void {
     if (killer?.isPlayer && killer.alive) {
       killer.kills++;
-      const reward = killer.skin?.goldSteal
-        ? Math.round(this.points / 2)
-        : Math.round(this.age * 100 * (killer.skin?.kScrM ?? 1));
+      const effect = accessoryEffect(killer.tail);
+      let reward = killer.skin?.goldSteal ? Math.round(this.points / 2) : Math.round(this.age * 100 * (killer.skin?.kScrM ?? 1));
+
+      if (effect?.leaderKillMult && this.iconIndex === 1) reward *= effect.leaderKillMult;
+      const spike = source as { isItem?: boolean; owner?: unknown } | undefined;
+      if (effect?.spikeKillMult && spike?.isItem && spike.owner === killer) reward *= effect.spikeKillMult;
+      if (effect?.killBuff) {
+        killer.killBuffTimer = effect.killBuff.time;
+        killer.killBuffMult = effect.killBuff.dmg;
+        killer.killBuffSpeed = effect.killBuff.spd;
+      }
       this.awardScore?.(killer, reward);
       this.server?.send(killer.id, "N", "kills", killer.kills, 1);
     }
@@ -715,14 +816,19 @@ export class Player implements Damageable, Interpolated {
   public sendAnimation(hitSomething: boolean): void {
     for (const player of this.players) {
       if (this.sentTo[player.id] && this.canSee(player)) {
-        this.server?.send(player.id, "K", this.sid, hitSomething ? 1 : 0, this.weaponIndex);
+        this.server?.send(player.id, "K", this.sid, hitSomething ? 1 : 0, this.weaponIndex, this.swingSpeed());
       }
     }
   }
 
+  public swingSpeed(): number {
+    return fixTo(1 / (this.skin?.atkSpd ?? 1), 2);
+  }
+
   public canSee(target: Positioned | null): boolean {
     if (!target) return false;
-    const other = target as Damageable & { noMovTimer?: number };
+    const other = target as Damageable & { noMovTimer?: number; powers?: PlayerPowers };
+    if (other !== (this as unknown as Damageable) && other.powers?.invisible) return false;
     if (other.skin?.invisTimer && (other.noMovTimer ?? 0) >= other.skin.invisTimer) return false;
 
     const dx = Math.abs(target.x - this.x) - target.scale;
@@ -733,8 +839,8 @@ export class Player implements Damageable, Interpolated {
     );
   }
 
-  public startAnim(didHit: boolean, weaponIndex: number): void {
-    const duration = this.itemData.weapons[weaponIndex].speed ?? 300;
+  public startAnim(didHit: boolean, weaponIndex: number, speedMult?: number): void {
+    const duration = (this.itemData.weapons[weaponIndex].speed ?? 300) / (speedMult || 1);
     this.swing.start(duration, didHit ? -this.config.hitAngle : -Math.PI);
   }
 

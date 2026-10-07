@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import {
-  buildCipherTables, decode, encode, hmacSha256, MAC_LENGTH, SHUFFLED_MODE,
+  buildCipherTables, decode, encode, FULL_SHUFFLED_MODE, hmacSha256, MAC_LENGTH,
   type CipherTables, type MsgPackValue, type ServerPacketType,
 } from "../shared";
 import { serverConfig } from "../config";
@@ -34,12 +34,12 @@ export class Client {
   public constructor(private readonly socket: WebSocketLike) {
     const seed = randomBytes(4).readUInt32BE(0);
     this.key = new Uint8Array(randomBytes(32));
-    this.tables = buildCipherTables(seed);
+    this.tables = buildCipherTables(seed, null, true);
 
     socket.onmessage = (data) => this.receive(data);
     socket.onclose = () => this.onClose?.();
 
-    this.sendRaw(["io-init", [this.socketId, seed, Buffer.from(this.key).toString("hex"), SHUFFLED_MODE]]);
+    this.sendRaw(["io-init", [this.socketId, seed, Buffer.from(this.key).toString("hex"), FULL_SHUFFLED_MODE, 0]]);
   }
 
   public get remoteAddress(): string {

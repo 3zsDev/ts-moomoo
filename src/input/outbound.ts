@@ -2,10 +2,9 @@ import { config } from "../config";
 import { state } from "../game/state";
 import { connection } from "../net/Connection";
 import { ClientPacket } from "../net/protocol";
-import { getAngleDist } from "../utils/angles";
 import { fixTo } from "../utils/math";
 import { getAimAngle, touch } from "./aim";
-import { MOVEMENT_KEYS } from "./bindings";
+import { movementKeys } from "./keybinds";
 
 export const heldKeys: Record<number, boolean> = {};
 
@@ -13,35 +12,35 @@ export const attack = { held: 0 };
 
 let lastSentMoveAngle: number | undefined;
 
-const MOVE_ANGLE_EPSILON = 0.05;
+// the move packet only goes out once the heading changes by more than this
+const MOVE_ANGLE_EPSILON = 0.3;
 
 function getMoveAngle(): number | undefined {
-  if (touch.active) return touch.moveAngle;
+  let angle: number | undefined;
+  if (touch.usingTouch) {
+    if (!touch.active) return undefined;
+    angle = touch.moveAngle;
+  }
 
   let x = 0;
   let y = 0;
-  for (const code in MOVEMENT_KEYS) {
+  const keys = movementKeys();
+  for (const code in keys) {
     if (!heldKeys[code]) continue;
-    const [dx, dy] = MOVEMENT_KEYS[code];
-    x += dx;
-    y += dy;
+    x += keys[code][0];
+    y += keys[code][1];
   }
 
-  x = Math.sign(x);
-  y = Math.sign(y);
-
-  if (x === 0 && y === 0) return undefined;
-  return fixTo(Math.atan2(y, x), 2);
+  if (x !== 0 || y !== 0) angle = Math.atan2(y, x);
+  return angle === undefined ? undefined : fixTo(angle, 2);
 }
 
 export function sendMoveDirection(): void {
   const angle = getMoveAngle();
-  const unchanged =
-    angle == null || lastSentMoveAngle == null
-      ? angle === lastSentMoveAngle
-      : getAngleDist(angle, lastSentMoveAngle) <= MOVE_ANGLE_EPSILON;
+  const changed =
+    lastSentMoveAngle == null || angle == null || Math.abs(angle - lastSentMoveAngle) > MOVE_ANGLE_EPSILON;
 
-  if (unchanged) return;
+  if (!changed) return;
   connection.send(ClientPacket.Move, angle ?? null);
   lastSentMoveAngle = angle;
 }
@@ -52,16 +51,37 @@ export function sendAttackState(): void {
   connection.send(ClientPacket.SendHit, attack.held, me.buildIndex >= 0 ? getAimAngle() : null);
 }
 
+let lastSentAim: number | undefined;
+
 export function sendAimAngle(): void {
   if (!state.me) return;
   if (state.lastAngleSend && state.now - state.lastAngleSend < 1000 / config.clientSendRate) return;
 
   state.lastAngleSend = state.now;
-  connection.send(ClientPacket.SendAim, getAimAngle());
+  const angle = getAimAngle();
+  if (angle === lastSentAim) return;
+  lastSentAim = angle;
+  connection.send(ClientPacket.SendAim, angle);
 }
 
 export function selectItem(index: number, isWeapon = false): void {
   connection.send(ClientPacket.SelectToBuild, index, isWeapon);
+}
+
+export function toggleAutoGather(): void {
+  connection.send(ClientPacket.AutoGather, 1);
+}
+
+// locking rotation is now also reported to the server (K 0)
+export function toggleLockDir(): void {
+  const me = state.me;
+  if (!me) return;
+  me.lockDir = !me.lockDir;
+  connection.send(ClientPacket.AutoGather, 0);
+}
+
+export function pingMinimap(): void {
+  connection.send(ClientPacket.PingMap, 1);
 }
 
 export function clearHeldKeys(): void {

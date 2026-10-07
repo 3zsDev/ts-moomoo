@@ -1,7 +1,7 @@
 import { config } from "../config";
 import { state } from "../game/state";
 import { getDirection, getDistance } from "../utils/geometry";
-import { VIEW_HEIGHT, VIEW_WIDTH } from "./canvas";
+import { view } from "./canvas";
 
 export const camera = {
   left: 0,
@@ -27,6 +27,6 @@ export function updateCamera(delta: number): void {
     }
   }
 
-  camera.left = state.cameraX - VIEW_WIDTH / 2;
-  camera.top = state.cameraY - VIEW_HEIGHT / 2;
+  camera.left = state.cameraX - view.width / 2;
+  camera.top = state.cameraY - view.height / 2;
 }

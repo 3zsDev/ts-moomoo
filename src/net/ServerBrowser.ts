@@ -1,4 +1,4 @@
-import { discoverLocalServers, LOCAL_REGION } from "./localServers";
+import { discoverLocalServers } from "./localServers";
 
 export interface RegionInfo {
   name: string;
@@ -26,23 +26,17 @@ export const regionInfo: Record<string, RegionInfo> = {
 
 export interface ServerEntry {
   region: string;
+  regionName?: string;
 
   key: string;
   name: string;
-  index: number;
-  port?: number;
   playerCount: number;
   playerCapacity: number;
-  isPrivate?: boolean;
-  games?: Array<{ playerCount: number; playerCapacity: number; isPrivate?: boolean }>;
-
+  auth?: boolean;
+  port?: number;
   sandbox?: boolean;
   httpUrl?: string;
   wsUrl?: string;
-
-  ping?: number;
-  pings?: number[];
-  selected?: boolean;
 }
 
 export interface ServerAddress {
@@ -52,211 +46,294 @@ export interface ServerAddress {
   wsUrl?: string;
 }
 
+export interface RegionSummary {
+  id: string;
+  name: string;
+  ping: number | null;
+  players: number;
+}
+
+export type BrowserChange = "list" | "refresh" | "user";
+
+interface Selection {
+  region: string;
+  name: string;
+}
+
+export interface BrowserPolicy {
+  isMember(): boolean;
+  isStaff(): boolean;
+}
+
+const PING_TIMEOUT = 2500;
+
+function measure(url: string): Promise<number> {
+  const start = performance.now();
+  return fetch(url, { cache: "no-store" }).then(() => performance.now() - start);
+}
+
 export class ServerBrowser {
-  public servers: Record<string, ServerEntry[]> = {};
+  private entries: ServerEntry[] = [];
+  private pings: Record<string, number> = {};
+  private selection: Selection | null = null;
+  private userChose = false;
+  private policy: BrowserPolicy = { isMember: () => false, isStaff: () => false };
+  private readonly listeners: ((kind: BrowserChange) => void)[] = [];
 
-  public selectedKey?: string;
-  public password?: string | null;
-
-  private pingTimer?: ReturnType<typeof setInterval>;
-  private localTimer?: ReturnType<typeof setInterval>;
   public onUpdate: (() => void) | null = null;
 
-  public constructor(private readonly baseUrl: string) {}
+  public constructor(private readonly baseHost: string) {}
 
-  public parseServerQuery(override?: string): [region: string, name: string, password: string | null] | [] {
-    const params = new URLSearchParams(location.search);
-    const value = override ?? params.get("server");
-    if (typeof value !== "string") return [];
-    const [region, name] = value.split(":");
-    return [region, name, params.get("password")];
+  public init(policy: BrowserPolicy): void {
+    this.policy = policy;
   }
 
-  public generateHref(region: string, name: string, password?: string | null): string {
-    let href = `${window.location.href.split("?")[0]}?server=${region}:${name}`;
-    if (password) href += `&password=${encodeURIComponent(password)}`;
-    return href;
+  public onChange(listener: (kind: BrowserChange) => void): void {
+    this.listeners.push(listener);
   }
 
-  public switchServer(region: string, name: string): void {
-    window.location.href = this.generateHref(region, name, null);
+  private emit(kind: BrowserChange): void {
+    for (const listener of this.listeners) listener(kind);
+    this.onUpdate?.();
   }
 
-  private lookup(region: string, name: string): ServerEntry | undefined {
-    return this.servers[region]?.find((server) => server.name === name);
+  public get selectedKey(): string | undefined {
+    return this.selection ? this.key() : undefined;
   }
 
-  public findServer(region: string, name: string): ServerEntry | undefined {
-    const found = this.lookup(region, name);
-    if (!found) console.warn(`No server "${name}" in region "${region}".`);
-    return found;
+  public regionName(region: string | null): string {
+    if (region == null) return "";
+    const named = this.entries.find((entry) => entry.region == region && entry.regionName);
+    return named?.regionName ?? regionInfo[region]?.name ?? region;
   }
 
-  public serverHost(server: ServerEntry): string {
+  public address(server: ServerEntry): string {
     if (server.wsUrl) return "localhost";
-    return String(server.region) === "0" ? location.hostname : `${server.key}.${server.region}.${this.baseUrl}`;
+    return String(server.region) === "0" ? location.hostname : `${server.key}.${server.region}.${this.baseHost}`;
   }
 
-  // Local servers are plain http, so probing them over https never resolves.
-  private pingScheme(server: ServerEntry): string {
-    return String(server.region) === "0" ? location.protocol.replace(":", "") : "https";
+  public isFull(server: ServerEntry): boolean {
+    return server.playerCount >= server.playerCapacity;
   }
 
-  private pingUrl(server: ServerEntry): string {
-    if (server.httpUrl) return `${server.httpUrl}/ping`;
+  public joinable(server: ServerEntry): boolean {
+    if (server.auth && !this.policy.isMember()) return false;
+    return !this.isFull(server) || this.policy.isStaff();
+  }
 
-    let host = this.serverHost(server);
-    if (server.port) host += `:${server.port}`;
-    return `${this.pingScheme(server)}://${host}/ping`;
+  private regionIds(): string[] {
+    const ids: string[] = [];
+    for (const entry of this.entries) if (!ids.includes(entry.region)) ids.push(entry.region);
+    return ids;
+  }
+
+  private inRegion(region: string): ServerEntry[] {
+    return this.entries.filter((entry) => entry.region == region);
+  }
+
+  private find(region: string, name: string): ServerEntry | null {
+    return this.entries.find((entry) => entry.region == region && entry.name == name) ?? null;
+  }
+
+  private bestIn(region: string): ServerEntry | null {
+    let open = this.inRegion(region).filter((entry) => this.joinable(entry));
+    if (this.policy.isMember() && open.some((entry) => entry.auth)) open = open.filter((entry) => entry.auth);
+    open.sort((a, b) => b.playerCount - a.playerCount);
+    return open[0] ?? null;
+  }
+
+  private bestRegion(): string | null {
+    const ping = (region: string) => this.pings[region] ?? Infinity;
+    const usable = this.regionIds().filter((region) => this.bestIn(region));
+    usable.sort((a, b) => ping(a) - ping(b));
+    return usable[0] ?? this.regionIds()[0] ?? null;
+  }
+
+  public regions(): RegionSummary[] {
+    return this.regionIds().map((id) => ({
+      id,
+      name: this.regionName(id),
+      ping: this.pings[id] === undefined ? null : Math.round(this.pings[id]),
+      players: this.inRegion(id).reduce((sum, entry) => sum + entry.playerCount, 0),
+    }));
+  }
+
+  public serversIn(region: string | null): ServerEntry[] {
+    if (region == null) return [];
+    return this.inRegion(region).sort((a, b) => b.playerCount - a.playerCount);
+  }
+
+  public totalPlayers(): number {
+    return this.entries.reduce((sum, entry) => sum + entry.playerCount, 0);
+  }
+
+  public selected(): ServerEntry | null {
+    return this.selection ? this.find(this.selection.region, this.selection.name) : null;
   }
 
   public selectedServer(): ServerEntry | undefined {
-    const [region, name] = this.parseServerQuery(this.selectedKey);
-    if (!region || !name) return undefined;
-    return this.lookup(region, name);
+    return this.selected() ?? undefined;
+  }
+
+  public selectedRegion(): string | null {
+    return this.selection?.region ?? null;
+  }
+
+  public key(): string {
+    return this.selection ? `${this.selection.region}:${this.selection.name}` : "";
+  }
+
+  public needsSignIn(): boolean {
+    const server = this.selected();
+    return Boolean(server?.auth) && !this.policy.isMember();
   }
 
   public isLocalSelected(): boolean {
-    return Boolean(this.selectedServer()?.wsUrl);
+    return Boolean(this.selected()?.wsUrl);
   }
 
-  public resolve(onError: (reason: string) => void, overrideKey?: string): ServerAddress | null {
-    const [region, name, password] = this.parseServerQuery(overrideKey ?? this.selectedKey);
-    if (!region || !name) {
-      onError("Unable to find server");
-      return null;
+  private fromUrl(): Selection | null {
+    let value = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+    if (!value) value = new URLSearchParams(location.search).get("server") || "";
+    const [region, name] = value.split(":");
+    return region ? { region, name: name || "" } : null;
+  }
+
+  private writeHash(): void {
+    if (!this.selection) return;
+    const hash = `#${this.key()}`;
+    if (location.hash === hash) return;
+    const params = new URLSearchParams(location.search);
+    params.delete("server");
+    const search = params.toString() ? `?${params}` : "";
+    try {
+      history.replaceState(null, document.title, location.pathname + search + hash);
+    } catch {
+      location.hash = hash;
     }
-    this.password = password;
-
-    const server = this.findServer(region, name);
-    if (!server) {
-      onError(`Failed to find server for region ${region} and name ${name}`);
-      return null;
-    }
-    if (server.playerCount >= server.playerCapacity) {
-      onError("Server is already full.");
-      return null;
-    }
-
-    window.history.replaceState(document.title, document.title, this.generateHref(region, name, this.password));
-    return { host: this.serverHost(server), port: server.port, gameIndex: 0, wsUrl: server.wsUrl };
   }
 
-  public async load(listUrl: string): Promise<void> {
-    const entries: ServerEntry[] = await fetch(listUrl)
-      .then((response) => response.json())
-      .catch(() => [] as ServerEntry[]);
+  private reselect(): boolean {
+    const before = this.selection && this.key();
+    let next = this.selection;
 
-    this.processServers(entries);
-    await this.syncLocal();
-
-    const all = [...entries, ...(this.servers[LOCAL_REGION] ?? [])];
-    if (all.length === 0) throw new Error("no servers available");
-
-    await this.measureLatency();
-    await this.measureLatency();
-    this.selectDefault(all);
-    this.onUpdate?.();
-
-    this.stopPinging();
-    this.pingTimer = setInterval(() => void this.measureLatency(), 5000);
-    this.localTimer = setInterval(() => {
-      void this.syncLocal().then(() => this.onUpdate?.());
-    }, 5000);
-  }
-
-  private async syncLocal(): Promise<void> {
-    const found = await discoverLocalServers();
-    const previous = this.servers[LOCAL_REGION] ?? [];
-
-    for (const entry of found) {
-      const known = previous.find((server) => server.key === entry.key);
-      if (!known) continue;
-      entry.ping = known.ping;
-      entry.pings = known.pings;
-      entry.selected = known.selected;
-    }
-
-    if (found.length === 0) delete this.servers[LOCAL_REGION];
-    else this.servers[LOCAL_REGION] = found;
-  }
-
-  public stopPinging(): void {
-    if (this.pingTimer) clearInterval(this.pingTimer);
-    this.pingTimer = undefined;
-    if (this.localTimer) clearInterval(this.localTimer);
-    this.localTimer = undefined;
-  }
-
-  private processServers(entries: ServerEntry[]): void {
-    const grouped: Record<string, ServerEntry[]> = {};
-    for (const entry of entries) {
-      (grouped[entry.region] ||= []).push(entry);
-    }
-    for (const region in grouped) {
-      grouped[region].sort((a, b) => b.playerCount - a.playerCount);
-    }
-    this.servers = grouped;
-  }
-
-  private async measureLatency(): Promise<void> {
-    await Promise.all(
-      Object.values(this.servers).map(async (regionServers) => {
-        const first = regionServers[0];
-        if (!first) return;
-
-        const start = Date.now();
-
-        await Promise.race([
-          fetch(this.pingUrl(first))
-            .then(() => {
-              const elapsed = Date.now() - start;
-              for (const server of regionServers) {
-                server.pings ??= [];
-                server.pings.push(elapsed);
-                if (server.pings.length > 10) server.pings.shift();
-                server.ping = Math.floor(server.pings.reduce((sum, p) => sum + p, 0) / server.pings.length);
-              }
-            })
-            .catch(() => {}),
-          new Promise<void>((resolve) => setTimeout(resolve, 100)),
-        ]);
-      }),
-    );
-
-    this.onUpdate?.();
-  }
-
-  private selectDefault(entries: ServerEntry[]): void {
-    const [region, name] = this.parseServerQuery();
-
-    for (const entry of entries) {
-      if (entry.region === region && entry.name === name) {
-        entry.selected = true;
-        this.selectedKey = `${entry.region}:${entry.name}`;
-        return;
+    if (!next) {
+      const fromUrl = this.fromUrl();
+      if (fromUrl && this.inRegion(fromUrl.region).length) {
+        next = fromUrl;
+        this.userChose = true;
       }
     }
 
-    const remote = entries.filter((entry) => !entry.wsUrl);
-    const best = ServerBrowser.pickBestServer(remote) ?? remote[0] ?? entries[0];
-    if (!best) return;
-    best.selected = true;
-    this.selectedKey = `${best.region}:${best.name}`;
-    window.history.replaceState(
-      document.title, document.title,
-      this.generateHref(best.region, best.name, this.password),
+    if (!next || !this.inRegion(next.region).length) {
+      const region = this.bestRegion();
+      next = region ? { region, name: "" } : null;
+    } else if (!this.userChose) {
+      const region = this.bestRegion();
+      if (region && region != next.region) next = { region, name: "" };
+    }
+
+    if (next) {
+      const current = next.name ? this.find(next.region, next.name) : null;
+      if (!current || (this.isFull(current) && !this.policy.isStaff())) {
+        const best = this.bestIn(next.region);
+        next = { region: next.region, name: best?.name ?? current?.name ?? "" };
+      }
+    }
+
+    this.selection = next;
+    this.writeHash();
+    return (this.selection && this.key()) !== before;
+  }
+
+  public choose(region: string, name?: string): void {
+    this.userChose = true;
+    this.selection = { region, name: name || "" };
+    this.reselect();
+    this.emit("user");
+  }
+
+  public moveOff(): ServerEntry | null {
+    if (!this.selection) return null;
+    const current = this.selection.name;
+    const others = this.inRegion(this.selection.region)
+      .filter((entry) => entry.name != current && this.joinable(entry))
+      .sort((a, b) => b.playerCount - a.playerCount);
+
+    const target = others[0];
+    if (!target) return null;
+    this.selection = { region: this.selection.region, name: target.name };
+    this.writeHash();
+    this.emit("user");
+    return target;
+  }
+
+  public refresh(): void {
+    this.emit(this.reselect() ? "list" : "refresh");
+  }
+
+
+  private pingUrl(server: ServerEntry): string {
+    if (server.httpUrl) return `${server.httpUrl}/ping`;
+    let host = this.address(server);
+    if (server.port) host += `:${server.port}`;
+    const scheme = String(server.region) === "0" ? location.protocol.replace(":", "") : "https";
+    return `${scheme}://${host}/ping`;
+  }
+
+  private measureRegions(): Promise<unknown> {
+    return Promise.all(
+      this.regionIds().map((region) => {
+        const first = this.inRegion(region)[0];
+        const url = this.pingUrl(first);
+        const ping = measure(url)
+          .then(() => measure(url))
+          .then((ms) => {
+            this.pings[region] = this.pings[region] === undefined ? ms : Math.min(this.pings[region], ms);
+          })
+          .catch(() => {});
+        return Promise.race([ping, new Promise((resolve) => setTimeout(resolve, PING_TIMEOUT))]);
+      }),
     );
   }
 
-  private static pickBestServer(entries: ServerEntry[]): ServerEntry | null {
-    const open = entries.filter((entry) => entry.playerCount !== entry.playerCapacity);
-    if (open.length === 0) return null;
+  public setEntries(list: ServerEntry[]): Promise<void> {
+    const first = !this.entries.length;
+    this.entries = (Array.isArray(list) ? list : []).map((entry) => ({ ...entry, region: String(entry.region) }));
 
-    const bestPing = Math.min(...open.map((entry) => entry.ping ?? Infinity));
-    const fastest = open.filter((entry) => entry.ping === bestPing);
-    if (fastest.length === 0) return null;
+    if (first) {
+      return this.measureRegions().then(() => {
+        this.reselect();
+        this.emit("list");
+      });
+    }
 
-    return fastest.reduce((a, b) => (a.playerCount > b.playerCount ? a : b));
+    this.emit(this.reselect() ? "list" : "refresh");
+    void this.measureRegions().then(() => this.emit(this.reselect() ? "list" : "refresh"));
+    return Promise.resolve();
+  }
+
+  public async load(listUrl: string): Promise<void> {
+    const [remote, local] = await Promise.all([
+      fetch(listUrl)
+        .then((response) => response.json() as Promise<ServerEntry[]>)
+        .catch(() => null),
+      discoverLocalServers(),
+    ]);
+    if (!Array.isArray(remote) && !local.length) throw new Error("could not load the server list");
+
+    await this.setEntries([...(Array.isArray(remote) ? remote : []), ...local]);
+    if (!this.entries.length) throw new Error("no servers available");
+  }
+
+  public stopPinging(): void {}
+
+  public resolve(onError: (reason: string) => void): ServerAddress | null {
+    const server = this.selected();
+    if (!server) {
+      onError("No servers are available right now. Try again in a moment.");
+      return null;
+    }
+    return { host: this.address(server), port: server.port, gameIndex: 0, wsUrl: server.wsUrl };
   }
 }

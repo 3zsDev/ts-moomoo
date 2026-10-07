@@ -39,7 +39,9 @@ export class CollisionGrid {
     obj.gridLocations.length = 0;
   }
 
-  public query(x: number, y: number, radius: number): GameObject[][] {
+  public query(rawX: number, rawY: number, radius: number): GameObject[][] {
+    const x = clamp(rawX, 0, this.mapScale - 1);
+    const y = clamp(rawY, 0, this.mapScale - 1);
     const gx = Math.floor(x / this.cellSize);
     const gy = Math.floor(y / this.cellSize);
     const result: GameObject[][] = [];

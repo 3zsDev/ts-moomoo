@@ -7,6 +7,11 @@ export const MAC_LENGTH = 6;
 
 export const SHUFFLED_MODE = 1;
 
+export const FULL_SHUFFLED_MODE = 2;
+
+export const LEGACY_C2S_COUNT = 17;
+export const LEGACY_S2C_COUNT = 36;
+
 export interface CodeTable {
   enc: Record<string, number>;
 
@@ -46,10 +51,10 @@ function buildTable(codes: string[], seed: number): CodeTable {
   return { enc, dec };
 }
 
-export function buildCipherTables(seed: number): CipherTables {
-  const mixed = seed ^ Math.imul(PROTOCOL_VERSION, 2654435761);
+export function buildCipherTables(seed: number, salt?: number | null, fullLists = salt != null): CipherTables {
+  const mixed = (seed ^ Math.imul(salt ?? PROTOCOL_VERSION, 2654435761)) >>> 0;
   return {
-    c2s: buildTable(CLIENT_CODES, mixed),
-    s2c: buildTable(SERVER_CODES, mixed ^ 2246822507),
+    c2s: buildTable(fullLists ? CLIENT_CODES : CLIENT_CODES.slice(0, LEGACY_C2S_COUNT), mixed),
+    s2c: buildTable(fullLists ? SERVER_CODES : SERVER_CODES.slice(0, LEGACY_S2C_COUNT), (mixed ^ 2246822507) >>> 0),
   };
 }

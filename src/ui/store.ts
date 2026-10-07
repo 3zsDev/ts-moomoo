@@ -5,6 +5,8 @@ import { connection } from "../net/Connection";
 import { ClientPacket } from "../net/protocol";
 import { createElement, hookTouchEvents, removeAllChildren } from "../utils/dom";
 import { ui } from "./elements";
+import { closeGameMenu } from "./gameMenu";
+import { closeChat } from "./hud/chat";
 import { hideItemInfo, showItemInfo } from "./itemInfo";
 
 let activeTab = 0;
@@ -26,6 +28,8 @@ export function toggleStore(): void {
   }
   ui.storeMenu.style.display = "block";
   ui.allianceMenu.style.display = "none";
+  closeGameMenu();
+  closeChat();
   refreshStore();
 }
 
@@ -37,14 +41,20 @@ export function closeStore(): void {
 
 export function refreshStore(): void {
   if (!state.me) return;
+  flushStoreUpdates();
 
   removeAllChildren(ui.storeHolder);
 
   const isAccessoryTab = activeTab === 1;
   const catalogue = isAccessoryTab ? accessories : hats;
 
-  for (const cosmetic of catalogue) {
-    if (cosmetic.dontSell) continue;
+  const owned = isAccessoryTab ? state.me.tails : state.me.skins;
+  const order = catalogue
+    .map((cosmetic, index) => ({ cosmetic, index }))
+    .sort((a, b) => Number(Boolean(a.cosmetic.earned)) - Number(Boolean(b.cosmetic.earned)) || a.index - b.index);
+
+  for (const { cosmetic } of order) {
+    if (cosmetic.dontSell && !(cosmetic.earned && owned[cosmetic.id])) continue;
     ui.storeHolder.appendChild(buildTile(cosmetic, isAccessoryTab));
   }
 }
@@ -107,9 +117,20 @@ export function buyCosmetic(id: number, isAccessory: boolean): void {
   connection.send(ClientPacket.Store, 1, id, isAccessory);
 }
 
+const pendingUpdates: [isEquip: boolean, id: number, isAccessory: boolean][] = [];
+
+export function flushStoreUpdates(): void {
+  if (!state.me) return;
+  for (const update of pendingUpdates.splice(0)) applyStoreUpdate(...update);
+}
+
 export function applyStoreUpdate(isEquip: boolean, id: number, isAccessory: boolean): void {
   const me = state.me;
-  if (!me) return;
+  if (!me) {
+    pendingUpdates.push([isEquip, id, isAccessory]);
+    return;
+  }
+  flushStoreUpdates();
 
   if (isAccessory) {
     if (isEquip) me.tailIndex = id;

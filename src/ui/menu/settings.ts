@@ -1,32 +1,40 @@
 import { setNativeResolution } from "../../render/canvas";
-import { loadBool, loadSetting, saveBool, saveSetting } from "../../utils/storage";
+import { loadBool, saveBool, saveSetting } from "../../utils/storage";
 import { ui } from "../elements";
+import { setNetStatsOptions } from "../hud/netStats";
 
 export let showPing = false;
+export let showFps = false;
+
+function applyNativeResolution(enabled: boolean): void {
+  setNativeResolution(enabled);
+  ui.nativeResolutionToggle.checked = enabled;
+  saveBool("native_resolution", enabled);
+}
 
 export function loadSettings(): void {
-  const native = loadBool("native_resolution", false);
-  setNativeResolution(native);
-  ui.nativeResolutionToggle.checked = native;
+  applyNativeResolution(loadBool("native_resolution", true));
 
   showPing = loadBool("show_ping", false);
   ui.showPingToggle.checked = showPing;
-  ui.pingDisplay.hidden = !showPing;
-
-  ui.nameInput.value = loadSetting("moo_name") ?? "";
+  showFps = loadBool("show_fps", false);
+  ui.showFpsToggle.checked = showFps;
+  setNetStatsOptions(showPing, showFps);
 }
 
 export function bindSettingToggles(): void {
-  ui.nativeResolutionToggle.onchange = () => {
-    const enabled = ui.nativeResolutionToggle.checked;
-    setNativeResolution(enabled);
-    saveBool("native_resolution", enabled);
-  };
+  ui.nativeResolutionToggle.onchange = () => applyNativeResolution(ui.nativeResolutionToggle.checked);
 
   ui.showPingToggle.onchange = () => {
     showPing = ui.showPingToggle.checked;
-    ui.pingDisplay.hidden = !showPing;
     saveBool("show_ping", showPing);
+    setNetStatsOptions(showPing, showFps);
+  };
+
+  ui.showFpsToggle.onchange = () => {
+    showFps = ui.showFpsToggle.checked;
+    saveBool("show_fps", showFps);
+    setNetStatsOptions(showPing, showFps);
   };
 }
 
@@ -36,10 +44,4 @@ export function saveName(): void {
 
 export function getPlayerName(): string {
   return ui.nameInput.value;
-}
-
-export function toggleSettings(): void {
-  const label = ui.settingsButton.getElementsByTagName("span")[0];
-  const showing = ui.guideCard.classList.toggle("showing");
-  if (label) label.innerText = showing ? "Close" : "Settings";
 }

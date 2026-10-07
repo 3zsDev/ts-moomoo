@@ -1,4 +1,4 @@
-import type { GameConfig } from "../config";
+import { accessoryEffect, type GameConfig } from "../config";
 import type { ItemData } from "../data/items";
 import type { ObjectManager } from "../systems/ObjectManager";
 import type { GameObject } from "./GameObject";
@@ -149,7 +149,11 @@ export class Projectile {
       const shield = entity.weaponIndex != null ? this.itemData.weapons[entity.weaponIndex].shield : undefined;
       const blocking = shield != null &&
         getAngleDist(this.dir + Math.PI, entity.dir) <= this.config.shieldAngle;
-      if (!blocking) entity.changeHealth(-this.dmg, this.owner, this.owner);
+      if (!blocking) {
+        const damage = this.dmg * (this.owner?.outgoingMult?.() ?? 1) *
+          (accessoryEffect(entity.tail)?.projDmgMult ?? 1);
+        entity.changeHealth(-damage, this.owner, this.owner);
+      }
     } else {
       const obj = closest as GameObject;
       if (obj.projDmg && obj.health && obj.changeHealth(-this.dmg)) {

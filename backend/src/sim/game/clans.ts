@@ -1,15 +1,19 @@
+import { isRude, sanitize } from "../../../../api/lib/filter.mjs";
 import { ServerPacket, type MsgPackValue, type Player, type ServerHooks } from "../../shared";
 
 export interface Clan {
   sid: string;
   owner: number;
+  clan?: string;
 }
 
 const MAX_NAME_LENGTH = 7;
+const SOLO = "solo";
 
 export class ClanManager {
   public readonly clans: Clan[] = [];
   public onJoinRequest: ((owner: Player, applicant: Player) => void) | null = null;
+  public reservedClans = new Set<string>();
 
   public constructor(
     private readonly players: Player[],
@@ -31,14 +35,20 @@ export class ClanManager {
   public create(player: Player, rawName: MsgPackValue): void {
     if (player.team || typeof rawName !== "string") return;
 
-    const name = rawName
+    const name = sanitize(rawName)
       .slice(0, MAX_NAME_LENGTH)
       .replace(/[^\w:()/? -]+/gim, " ")
       .trim();
 
-    if (!name || this.find(name)) return;
+    if (!name || this.find(name) || isRude(name)) return;
+
+    const key = name.toLowerCase();
+    if (key === SOLO) return;
+    const ownClan = player.clan?.toLowerCase() === key;
+    if (this.reservedClans.has(key) && !ownClan) return;
 
     const clan: Clan = { sid: name, owner: player.sid };
+    if (ownClan) clan.clan = player.clan!;
     this.clans.push(clan);
 
     player.team = name;
@@ -67,6 +77,13 @@ export class ClanManager {
     this.sendMembers(team);
   }
 
+  public deleteClan(sid: string): boolean {
+    const clan = this.find(sid);
+    if (!clan) return false;
+    this.disband(clan);
+    return true;
+  }
+
   private disband(clan: Clan): void {
     for (const member of this.players) {
       if (member.team !== clan.sid) continue;
@@ -86,6 +103,7 @@ export class ClanManager {
 
     const clan = this.find(clanSid);
     if (!clan) return;
+    if (clan.clan && player.clan !== clan.clan) return;
 
     const owner = this.ownerOf(clan);
     if (!owner) return;
@@ -99,6 +117,8 @@ export class ClanManager {
 
     const target = this.players.find((player) => player.sid === sid);
     if (!target || target.team) return;
+    const clan = this.find(owner.team);
+    if (clan?.clan && target.clan !== clan.clan) return;
 
     target.team = owner.team;
     target.isOwner = false;

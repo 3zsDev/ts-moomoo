@@ -75,6 +75,7 @@ if (withGame) {
       GAME_PORT,
       GAME_NAME: "1",
       GAME_SANDBOX: "0",
+      GAME_API: withApi ? "1" : "0",
       GAME_PEER_URL: `http://localhost:${SANDBOX_PORT}/`,
     },
   });
@@ -86,6 +87,7 @@ if (withSandbox) {
       GAME_PORT: SANDBOX_PORT,
       GAME_NAME: "sandbox",
       GAME_SANDBOX: "1",
+      GAME_API: withApi ? "1" : "0",
       GAME_PEER_URL: `http://localhost:${GAME_PORT}/`,
     },
   });

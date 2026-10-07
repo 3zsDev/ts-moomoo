@@ -1,104 +1,90 @@
 import { state } from "../game/state";
-import { connection } from "../net/Connection";
-import { ClientPacket } from "../net/protocol";
 import { markCurrentPosition } from "../render/minimap";
-import { KEY_BINDINGS, MOVEMENT_KEYS } from "./bindings";
-import { attack, clearHeldKeys, heldKeys, selectItem, sendAttackState, sendMoveDirection } from "./outbound";
+import { actionFor, movementKeys } from "./keybinds";
+import {
+  attack, clearHeldKeys, heldKeys, pingMinimap, selectItem, sendAttackState,
+  sendMoveDirection, toggleAutoGather, toggleLockDir,
+} from "./outbound";
+
+const ESCAPE = 27;
+const ENTER = 13;
+const SPACE = 32;
 
 export interface InputCallbacks {
+  isPlaying(): boolean;
   toggleChat(): void;
-  closeMenus(): void;
-
+  escape(): void;
   canUseHotkeys(): boolean;
+  canToggleChat(): boolean;
 }
 
 export function installKeyboardHandlers(callbacks: InputCallbacks): void {
   window.addEventListener("keydown", (event) => {
-    if (event.keyCode === KEY_BINDINGS.space && event.target === document.body) event.preventDefault();
+    if (event.keyCode === SPACE && event.target === document.body) event.preventDefault();
   });
 
   window.addEventListener("keydown", (event) => handleKeyDown(event, callbacks));
   window.addEventListener("keyup", (event) => handleKeyUp(event, callbacks));
 
-  window.addEventListener("blur", () => {
-    if (state.me?.alive) clearHeldKeys();
+  window.addEventListener("focus", () => {
+    if (callbacks.isPlaying()) clearHeldKeys();
   });
 }
 
 function handleKeyDown(event: KeyboardEvent, callbacks: InputCallbacks): void {
   const code = event.which || event.keyCode || 0;
 
-  if (code === KEY_BINDINGS.escape) {
-    callbacks.closeMenus();
+  if (code === ESCAPE) {
+    callbacks.escape();
     return;
   }
 
   const me = state.me;
-  if (!me?.alive || !callbacks.canUseHotkeys()) return;
+  if (!me || !callbacks.isPlaying() || !callbacks.canUseHotkeys()) return;
   if (heldKeys[code]) return;
   heldKeys[code] = true;
 
-  switch (code) {
-    case KEY_BINDINGS.autoGather:
-      connection.send(ClientPacket.AutoGather, 1);
-      return;
+  const action = actionFor(code);
+  const id = action?.id;
+  const slot = action?.slot;
 
-    case KEY_BINDINGS.markPosition:
-      markCurrentPosition();
-      return;
-
-    case KEY_BINDINGS.lockAim:
-      me.lockDir = !me.lockDir;
-      return;
-
-    case KEY_BINDINGS.quickFood:
-      selectItem(me.items[0]);
-      return;
-
-    case KEY_BINDINGS.pingMap:
-      connection.send(ClientPacket.PingMap, 1);
-      return;
-
-    case KEY_BINDINGS.space:
-      if (attack.held !== 1) {
-        attack.held = 1;
-        sendAttackState();
-      }
-      return;
-  }
-
-  const slot = code - KEY_BINDINGS.hotbarStart;
-  if (me.weapons[slot] != null) {
+  if (id === "autoGather") {
+    toggleAutoGather();
+  } else if (id === "mapMarker") {
+    markCurrentPosition();
+  } else if (id === "lockDir") {
+    toggleLockDir();
+  } else if (slot !== undefined && me.weapons[slot] != null) {
     selectItem(me.weapons[slot], true);
-    return;
+  } else if (slot !== undefined && me.items[slot - me.weapons.length] != null) {
+    selectItem(me.items[slot - me.weapons.length]);
+  } else if (id === "food") {
+    selectItem(me.items[0]);
+  } else if (id === "mapPing") {
+    pingMinimap();
+  } else if (movementKeys()[code]) {
+    sendMoveDirection();
+  } else if (id === "attack") {
+    attack.held = 1;
+    sendAttackState();
   }
-  const itemSlot = slot - me.weapons.length;
-  if (me.items[itemSlot] != null) {
-    selectItem(me.items[itemSlot]);
-    return;
-  }
-
-  if (MOVEMENT_KEYS[code]) sendMoveDirection();
 }
 
 function handleKeyUp(event: KeyboardEvent, callbacks: InputCallbacks): void {
+  if (!callbacks.isPlaying()) return;
   const code = event.which || event.keyCode || 0;
-  const wasHeld = heldKeys[code];
-  heldKeys[code] = false;
 
-  const me = state.me;
-  if (!me?.alive) return;
-
-  if (code === KEY_BINDINGS.enter) {
-    callbacks.toggleChat();
+  if (code === ENTER) {
+    if (callbacks.canToggleChat()) callbacks.toggleChat();
     return;
   }
 
-  if (!wasHeld) return;
+  if (!callbacks.canUseHotkeys() || !heldKeys[code]) return;
+  heldKeys[code] = false;
 
-  if (MOVEMENT_KEYS[code]) {
+  if (movementKeys()[code]) {
     sendMoveDirection();
-  } else if (code === KEY_BINDINGS.space && callbacks.canUseHotkeys()) {
+  } else if (actionFor(code)?.id === "attack") {
     attack.held = 0;
     sendAttackState();
   }

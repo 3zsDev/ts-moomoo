@@ -1,177 +1,524 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+    <head>
+        <script type="importmap">
+            {
+                "imports": {
+                    "moomoo-protocol": "/p/s16ns3.js"
+                }
+            }</script>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=0,viewport-fit=cover">
+        <title>MooMoo.io - Free Multiplayer Survival IO Game</title>
+        <meta name="description" content="Play MooMoo.io, a free multiplayer survival .io game. Gather resources, build your village, craft weapons and defend your windmills against players from around the world.">
+        <meta name="keywords" content="moomoo, moomoo.io, io game, survival game, multiplayer, online game, village, farm, build, browser game, free game">
+        <meta name="robots" content="noindex, nofollow">
+        <meta name="theme-color" content="#3367D6">
+        <link rel="canonical" href="https://moomoo.io/">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="MooMoo.io">
+        <meta property="og:title" content="MooMoo.io - Free Multiplayer Survival IO Game">
+        <meta property="og:description" content="Gather resources, build your village, craft weapons and defend your windmills against players from around the world. Play MooMoo.io free in your browser.">
+        <meta property="og:url" content="https://moomoo.io/">
+        <meta property="og:image" content="https://sandbox.moomoo.io/img/og-image.jpg">
+        <meta property="og:image:width" content="1200">
+        <meta property="og:image:height" content="630">
+        <meta property="og:image:alt" content="MooMoo.io - Gather. Build. Survive.">
+        <meta property="og:image:type" content="image/jpeg">
+        <meta property="og:locale" content="en_US">
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="MooMoo.io - Free Multiplayer Survival IO Game">
+        <meta name="twitter:description" content="Gather resources, build your village, craft weapons and defend your windmills against players from around the world. Play MooMoo.io free in your browser.">
+        <meta name="twitter:image" content="https://sandbox.moomoo.io/img/og-image.jpg">
+        <meta name="twitter:image:alt" content="MooMoo.io - Gather. Build. Survive.">
+        <link rel="manifest" href="./manifest.json">
+        <link rel="shortcut icon" type="image/png" href="./img/favicon.png?v=2"/>
+        <link rel="apple-touch-icon" href="./img/pwa-icon192x192.png">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-title" content="MooMoo.io">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="application-name" content="MooMoo.io">
+        <meta name="format-detection" content="telephone=no">
+        <meta http-equiv="cache-control" content="no-cache">
+        <meta http-equiv="expires" content="0">
+        <meta http-equiv="pragma" content="no-cache">
+        <script type="application/ld+json">
+            {
+                "@context": "https://schema.org",
+                "@type": "VideoGame",
+                "name": "MooMoo.io",
+                "url": "https://moomoo.io/",
+                "description": "MooMoo.io is a free multiplayer survival .io game. Gather resources, build your village, craft weapons and defend your windmills against players from around the world.",
+                "image": "https://moomoo.io/img/pwa-icon512x512.png",
+                "genre": [
+                    "Survival",
+                    "IO",
+                    "Multiplayer"
+                ],
+                "gamePlatform": "Web Browser",
+                "applicationCategory": "Game",
+                "operatingSystem": "Any",
+                "playMode": "MultiPlayer",
+                "inLanguage": "en",
+                "author": {
+                    "@type": "Organization",
+                    "name": "FRVR",
+                    "url": "https://frvr.com/"
+                },
+                "publisher": {
+                    "@type": "Organization",
+                    "name": "FRVR",
+                    "url": "https://frvr.com/"
+                },
+                "offers": {
+                    "@type": "Offer",
+                    "price": "0",
+                    "priceCurrency": "USD",
+                    "availability": "https://schema.org/InStock"
+                }
+            }</script>
+        <link rel="preconnect" href="https://api.moomoo.io" crossorigin>
+        <link rel="preconnect" href="https://challenges.cloudflare.com">
+        <link rel="preload" href="./css/fonts/qWcyB624q4L_C4jGQ9IK0O_dFlnrtREl.woff2" as="font" type="font/woff2" crossorigin>
+        <link rel="stylesheet" href="css/main.css?50"/>
+        <link href="./css/material-icons.css?4" rel="stylesheet">
+        <link href="./css/hammersmith-one.css?3" rel="stylesheet">
+        <script type="module" crossorigin src="./assets/index-3cf65e26.js"></script>
+        <link rel="modulepreload" crossorigin href="./assets/vendor-a3a301f0.js">
+    </head>
+    <body>
+        <script src="./libs/frvr-sdk.min.js?4"></script>
+        <script src="./libs/frvr-channel-web.min.js?4"></script>
+        <script>
+            window.FRVR.config = {
+                "gameId": "moomoo",
+                "consent": {
+                    "providerName": "cookiepro",
+                    "config": {
+                        "websiteKey": "XXX"
+                    }
+                },
+                "tracker": {
+                    "trackerChannelId": "moomoo_io"
+                },
+                "ads": {
+                    "providers": [{
+                        "name": "adsbygoogle-interstitial",
+                        "type": "interstitial",
+                        "config": {
+                            "timeout": 500
+                        }
+                    }, {
+                        "name": "adsbygoogle-reward",
+                        "type": "reward",
+                        "config": {
+                            "timeout": 500
+                        }
+                    }],
+                    "throttling": {
+                        "maxfrequency": 0
+                    }
+                }
+            };
+            try {
+                const isMoomooIo = document.location.hostname.endsWith('moomoo.io');
+                const isKrunkerIo = document.location.hostname.endsWith('krunker.io');
+                const cookieproKey = isMoomooIo ? "c94e102c-455a-4bf1-82b7-8c7f938301b6" : "15b4472b-823a-468e-b5eb-6eeaca5d6de4";
+                if (location.hostname !== 'localhost' && window.FRVR.config.consent) {
+                    window.FRVR.config.consent.config.websiteKey = cookieproKey;
+                } else {
+                    delete window.FRVR.config.consent;
+                }
 
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>ts-moomoo</title>
-  <link rel="stylesheet" href="css/main.css" />
-  <link rel="stylesheet" href="css/material-icons.css" />
-  <link rel="stylesheet" href="css/hammersmith-one.css" />
-  <link rel="stylesheet" href="css/overrides.css" />
-</head>
-
-<body>
-  <div id="errorNotification" class="menuCard" style="display:none"></div>
-  <div id="shutdownDisplay" hidden></div>
-
-  <div id="mainMenu">
-    <div id="menuContainer">
-      <div id="gameName">MooMoo.io</div>
-      <div id="loadingText">Loading...</div>
-
-      <div id="menuCardHolder" style="display:none">
-        <div style="display:inline-block">
-          <div class="menuCard" id="setupCard">
-            <input id="nameInput" placeholder="Enter Name" maxlength="15" />
-            <div id="turnstileWidget"></div>
-            <br />
-            <div id="enterGame" class="menuButton disabled"><span>Enter Game</span></div>
-          </div>
-
-          <div id="promoImgHolder" class="menuCard" style="display:block;margin-top:16px;padding-bottom:12px">
-            <img id="promoImg" src="img/promotion/banner_4.png" style="width:300px;cursor:pointer" />
-          </div>
+                window.FRVR.init('prod');
+                window.FRVR.tracker.addExtraFieldFunction(function(fields) {
+                    fields.context = 'moomoo';
+                    fields.app_version = '1.9.0';
+                    if (isKrunkerIo) {
+                        fields.channel = 'krunker_io';
+                    } else if (isMoomooIo) {
+                        fields.channel = 'moomoo_io';
+                    }
+                });
+            } catch (e) {
+                console.error('[FRVR] sdk failed init');
+            }
+        </script>
+        <script defer="defer" src="./libs/howler.core.min.js?2"></script>
+        <div id="pre-content-container" style="display:none"></div>
+        <div id="errorNotification" class="menuCard" style="display:none">
+            <div>
+                It looks like MooMoo ran in to a problem. Please try <a target="_blank" href="https://www.computerhope.com/issues/ch001411.htm">disabling all of your browser extensions</a>
+                and reloading the page.
+            </div>
+            <div style="text-align:center">
+                <a onclick="errorNotification.style.display = 'none'" style="cursor:pointer">Hide</a>
+            </div>
         </div>
-
-        <div id="rightCardHolder">
-          <div class="menuCard" id="guideCard">
-            <div class="menuHeader">Servers</div>
-            <div id="serverBrowser"></div>
-            <div id="altServer"><a href="//moomoo.io/">Back to MooMoo<i class="material-icons"
-                  style="font-size:10px;vertical-align:middle">arrow_forward_ios</i></a></div>
-
-            <div class="menuHeader" style="margin-top:10px">Select Color</div>
-            <div id="skinColorHolder"></div>
-
-            <div class="menuHeader" style="margin-top:10px">Controls</div>
-            <div id="desktopInstructions" class="menuText">
-              Movement: W, A, S, D<br />
-              Look: Mouse<br />
-              Gather/Attack: Mouse or Space<br />
-              Auto Attack: E<br />
-              Select Item: 1-9 or Click<br />
-              Quick Select Food: Q<br />
-              Lock Rotation: X<br />
-              Ping Minimap: R<br />
-              Add Map Marker: C<br />
-              Chat: Enter Key<br />
-              Close Windows: ESC
+        <div id="shutdownDisplay" hidden></div>
+        <div id="mainMenu">
+            <div id="menuContainer">
+                <div id="gameName" aria-label="MOOMOO.io"><span style="--i:0">M</span><span style="--i:1">O</span><span style="--i:2">O</span><span style="--i:3">M</span><span style="--i:4">O</span><span style="--i:5">O</span><span style="--i:6">.</span><span style="--i:7">i</span><span style="--i:8">o</span></div>
+                <div id="loadingText">Loading...</div>
+                <div id="menuCardHolder" style="display:none">
+                    <div class="menuCard" id="menuDialog">
+                        <div class="menuView" data-view="play">
+                            <div id="identityRow">
+                                <div id="skinButton" title="Choose your color"></div>
+                                <input id="nameInput" placeholder="Enter Name" maxlength="15">
+                                <div id="skinPopover" style="display:none">
+                                    <div id="skinColorHolder"></div>
+                                </div>
+                            </div>
+                            <div id="nameHint"></div>
+                            <div id="menuNotice"></div>
+                            <div id="playButtons">
+                                <div id="enterGame" class="menuButton">
+                                    <span>Play as Guest</span>
+                                </div>
+                                <div id="signInButton" class="menuButton secondary">
+                                    <span>Sign In</span>
+                                </div>
+                            </div>
+                            <div id="signInHint">Sign in to keep your name and stats</div>
+                            <div id="accountRow"></div>
+                            <div id="serverPicker" style="display:none">
+                                <div id="regionSelect"></div>
+                                <div id="serverSelect"></div>
+                            </div>
+                            <div id="serverNote"></div>
+                            <div id="statsNote"></div>
+                            <div id="backToMain"></div>
+                            <div id="menuNav">
+                                <a data-view="help">How to</a>
+                                <a data-view="friends" id="friendsNav" style="display:none">
+                                    Friends
+                                    <span class="friendsOnline" style="display:none">
+                                        <i class="material-icons">&#xE7FB;</i>
+                                        <span></span>
+                                    </span>
+                                </a>
+                                <a data-view="clan" id="clanNav">Clan</a>
+                                <a data-view="settings">Settings</a>
+                            </div>
+                            <div style="text-align:center;margin-top:6px;font-size:15px;color:#a8a8a8">Full Client Recode by 3zs</div>
+                        </div>
+                        <div class="menuView" data-view="help" style="display:none">
+                            <div class="viewHeader">
+                                <a class="viewBack">
+                                    <i class="material-icons">&#xE5C4;</i>
+                                </a>
+                                <span>How To Play</span>
+                            </div>
+                            <div class="viewBody">
+                                <div class="menuText">Collect resources around the map to build a village. Your Windmills generate gold over time. But make sure to protect them from other players.</div>
+                                <div class="menuHeader">Controls</div>
+                                <div id="desktopInstructions" class="menuText">
+                                    Look: Mouse<br/>
+                                    Gather/Attack: Mouse<br/>
+                                    Select Item: Click<br/>
+                                    Movement: Arrow Keys<br/>
+                                    Chat: Enter Key<br/>
+                                    Close Windows: ESC<br/>More keys are under Settings.
+                                </div>
+                                <div id="mobileInstructions" class="menuText">
+                                    Movement: Drag on left side of screen<br/>
+                                    Gather/Attack: Drag on right side of screen<br/>
+                                    Select Item: Touch item at bottom<br/>
+                                    Ping Minimap: Touch map<br/>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="menuView" data-view="settings" style="display:none">
+                            <div class="viewHeader">
+                                <a class="viewBack">
+                                    <i class="material-icons">&#xE5C4;</i>
+                                </a>
+                                <span>Settings</span>
+                            </div>
+                            <div class="viewBody">
+                                <div class="settingRadio">
+                                    <input id="nativeResolution" type="checkbox"/>Use Native Resolution
+                                </div>
+                                <div class="settingRadio">
+                                    <input id="showPing" type="checkbox"/>Show Ping
+                                </div>
+                                <div class="settingRadio">
+                                    <input id="showFps" type="checkbox"/>Show FPS
+                                </div>
+                                <div class="settingRadio">
+                                    <input id="showGrid" type="checkbox"/>Show Grid
+                                </div>
+                                <div id="accountPrefs" style="display:none">
+                                    <div class="settingRadio">
+                                        <input id="prefFriendNotifs" type="checkbox"/>Friend Notifications
+                                    </div>
+                                    <div class="settingRadio">
+                                        <input id="prefFriendRequests" type="checkbox"/>Allow Friend Requests
+                                    </div>
+                                    <div class="settingRadio">
+                                        <input id="prefClanInvites" type="checkbox"/>Allow Clan Invitations
+                                    </div>
+                                </div>
+                                <div id="keybindSection">
+                                    <div class="menuHeader">Keys</div>
+                                    <div class="menuText">Click a key to change it. Items can be bound by where they sit in your bar, by what they are, or both.</div>
+                                    <div id="keybindHolder"></div>
+                                </div>
+                                <div id="altServer"></div>
+                            </div>
+                        </div>
+                        <div class="menuView" data-view="friends" style="display:none">
+                            <div class="viewHeader">
+                                <a class="viewBack">
+                                    <i class="material-icons">&#xE5C4;</i>
+                                </a>
+                                <span>Friends</span>
+                            </div>
+                            <div class="viewBody">
+                                <div id="friendAdd">
+                                    <input id="friendName" placeholder="Add by player name" maxlength="15" autocomplete="off" spellcheck="false"/>
+                                    <div id="friendAddButton" class="menuButton">
+                                        <span>Add</span>
+                                    </div>
+                                </div>
+                                <div id="friendStatus"></div>
+                                <div id="friendRequests"></div>
+                                <div id="friendList"></div>
+                                <a id="myProfileLink">Your profile &amp; socials</a>
+                            </div>
+                        </div>
+                        <div class="menuView" data-view="top" style="display:none">
+                            <div class="viewHeader">
+                                <a class="viewBack">
+                                    <i class="material-icons">&#xE5C4;</i>
+                                </a>
+                                <span>Leaderboard</span>
+                            </div>
+                            <div class="viewBody" id="topPlayers">
+                                <div id="topTabs" class="segTabs"></div>
+                                <div id="topBoard"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div id="mobileInstructions" class="menuText">
-              Movement: Drag on left side of screen<br />
-              Gather/Attack: Drag on right side of screen<br />
-              Select Item: Touch item at bottom<br />
-              Ping Minimap: Touch map
+            <div id="accountCard" class="menuCard" style="display:none">
+                <div class="menuHeader" id="accountTitle">Sign In or Sign Up</div>
+                <div class="menuText" id="accountNote"></div>
+                <input type="email" id="accountEmail" placeholder="Email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254"/>
+                <input id="accountCode" placeholder="Code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="display:none"/>
+                <input type="password" id="accountPassword" placeholder="Password" autocomplete="current-password" maxlength="128" style="display:none"/>
+                <div id="accountStatus"></div>
+                <div id="accountSubmit" class="menuButton">
+                    <span>Send code</span>
+                </div>
+                <div id="accountLinks">
+                    <a id="accountLinkA"></a>
+                    <a id="accountLinkB"></a>
+                </div>
+                <div id="accountClose" class="cardClose" title="Close">
+                    <i class="material-icons">&#xE5CD;</i>
+                </div>
             </div>
-
-            <div class="menuHeader">Settings</div>
-            <div class="settingRadio">
-              <input id="nativeResolution" type="checkbox" />Use Native Resolution
+            <div id="verifyBackdrop"></div>
+            <div id="verifyDialog" class="menuCard">
+                <div class="menuHeader">Just a moment</div>
+                <div class="menuText" id="verifyText"></div>
+                <div id="turnstileWidget"></div>
+                <div id="verifyRetry" class="menuButton" style="display:none">
+                    <span>Try again</span>
+                </div>
+                <div id="verifyClose" class="cardClose" title="Close">
+                    <i class="material-icons">&#xE5CD;</i>
+                </div>
             </div>
-            <div class="settingRadio">
-              <input id="showPing" type="checkbox" />Show Ping
+            <div id="settingsButton" class="ytLink">
+                <i class="material-icons" style="font-size:30px;vertical-align:middle">&#xE8B8;</i>
+                <span>Settings</span>
             </div>
-            <div class="menuText">Created by <a href="https://frvr.com/" target="_blank" class="menuLink">FRVR</a></div>
-            <div class="menuText">Full Client Recode by 3zs</div>
-          </div>
+            <div id="joinPartyButton" class="ytLink">
+                <span>Invite</span>
+                <i class="material-icons" style="font-size:26px;vertical-align:middle">&#xE157;</i>
+            </div>
+            <div id="topLink" class="ytLink">
+                <span>Leaderboard</span>
+                <i class="material-icons" style="font-size:26px;vertical-align:middle">leaderboard</i>
+            </div>
+            <div id="topSpot" style="display:none"></div>
+            <div id="linksContainer2">
+                <a href="./docs/versions.txt" target="_blank" class="menuLink" draggable="false">v1.9.0</a>
+                | <a href="https://discord.gg/MqpUzka" target="_blank" class="menuLink" draggable="false">Discord</a>
+                | <a href="https://frvr.com/legal#TermsofService" target="_blank" class="menuLink" draggable="false">Terms</a>
+                | <a href="https://frvr.com/legal#PrivacyPolicy" target="_blank" class="menuLink" draggable="false">Privacy</a>
+                | <a href="https://frvr.com/" target="_blank" rel="noopener" class="menuLink" draggable="false">FRVR</a>
+            </div>
         </div>
-      </div>
-    </div>
-
-    <div id="settingsButton" class="ytLink">
-      <i class="material-icons" style="font-size:30px;vertical-align:middle">&#xE8B8;</i>
-      <span>Settings</span>
-    </div>
-    <div id="partyButton" class="inParty">
-      <span></span>
-      <i class="material-icons" style="font-size:30px;vertical-align:middle">&#xE8D3;</i>
-    </div>
-    <div id="joinPartyButton" class="ytLink">
-      <span>Join Party</span>
-      <i class="material-icons" style="font-size:30px;vertical-align:middle">&#xE0DA;</i>
-    </div>
-    <div id="linksContainer2"><a href="./docs/versions.txt" target="_blank" class="menuLink">v1.8.2</a> | <a
-        href="https://discord.gg/MqpUzka" target="_blank" class="menuLink">Discord</a> | <a
-        href="https://frvr.com/legal#TermsofService" target="_blank" class="menuLink">Terms</a> | <a
-        href="https://frvr.com/legal#PrivacyPolicy" target="_blank" class="menuLink">Privacy</a></div>
-  </div>
-
-  <div id="pingDisplay" hidden>Not connected</div>
-  <div id="diedText">YOU DIED</div>
-
-  <div id="touch-controls-left"></div>
-  <div id="touch-controls-right"></div>
-  <div id="touch-controls-fullscreen"></div>
-
-  <div id="gameUI" style="display:none">
-    <div id="chatHolder" style="display:none">
-      <input id="chatBox" placeholder="Enter Message" maxlength="30" />
-    </div>
-
-    <div id="upgradeHolder"></div>
-    <div id="upgradeCounter"></div>
-
-    <div id="topInfoHolder">
-      <div id="leaderboard">Leaderboard<div id="leaderboardData"></div>
-      </div>
-      <div></div>
-      <div id="killCounter" class="resourceDisplay"></div>
-    </div>
-
-    <div id="itemInfoHolder" class="uiElement"></div>
-
-    <div id="resDisplay">
-      <div id="foodDisplay" class="resourceDisplay"></div>
-      <div id="woodDisplay" class="resourceDisplay"></div>
-      <div id="stoneDisplay" class="resourceDisplay"></div>
-      <div id="scoreDisplay" class="resourceDisplay"></div>
-    </div>
-
-    <div id="bottomContainer">
-      <div id="ageText"></div>
-      <div id="ageBarContainer">
-        <div id="ageBar">
-          <div id="ageBarBody"></div>
+        <div id="netStats">
+            <span id="pingDisplay" hidden>
+                <span class="signalBars">
+                    <i></i>
+                    <i></i>
+                    <i></i>
+                    <i></i>
+                </span>
+                <span id="pingText">-- ms</span>
+            </span>
+            <span id="fpsDisplay" hidden>-- FPS</span>
         </div>
-      </div>
-      <div id="actionBar"></div>
-    </div>
+        <div id="diedText">YOU DIED</div>
+        <div id="touch-controls-left"></div>
+        <div id="touch-controls-right"></div>
+        <div id="touch-controls-fullscreen"></div>
+        <div id="profileCard" class="menuCard" style="display:none">
+            <div class="menuHeader" id="profileName"></div>
+            <div id="profileRole"></div>
+            <a id="profileClan"></a>
+            <div id="profileNote"></div>
+            <div id="profileLive"></div>
+            <div id="profileStats"></div>
+            <div id="profilePeriods"></div>
+            <div id="profileSocials"></div>
+            <div id="profileActions"></div>
+            <div id="profileStatus"></div>
+            <div id="profileClose" class="cardClose" title="Close">
+                <i class="material-icons">&#xE5CD;</i>
+            </div>
+        </div>
+        <div id="clanCard" class="menuCard" style="display:none">
+            <div class="menuHeader" id="clanName"></div>
+            <div id="clanBody"></div>
+            <div id="clanStatus"></div>
+            <div id="clanClose" class="cardClose" title="Close">
+                <i class="material-icons">&#xE5CD;</i>
+            </div>
+        </div>
+        <div id="friendNotes"></div>
+        <div id="confirmCard" style="display:none">
+            <div id="confirmText"></div>
+            <div id="confirmButtons">
+                <a id="confirmNo">Cancel</a>
+                <a id="confirmYes"></a>
+            </div>
+        </div>
+        <div id="inviteBanner" style="display:none">
+            <span id="inviteText"></span>
+            <a id="inviteJoin">Join</a>
+            <a id="inviteDismiss">
+                <i class="material-icons">&#xE5CD;</i>
+            </a>
+        </div>
+        <div id="friendToast" style="display:none">
+            <span id="friendToastText"></span>
+            <a id="friendToastAccept">Accept</a>
+            <a id="friendToastDismiss">
+                <i class="material-icons">&#xE5CD;</i>
+            </a>
+        </div>
+        <div id="gameSettings" class="menuCard" style="display:none">
+            <div id="gameMenuTabs" class="menuHeader">
+                <a data-tab="settings">Settings</a>
+                <a data-tab="friends">
+                    Friends
+                    <span class="friendsOnline" style="display:none">
+                        <i class="material-icons">&#xE7FB;</i>
+                        <span></span>
+                    </span>
+                </a>
+                <a data-tab="clan">Clan</a>
+                <a data-tab="report">Report</a>
+            </div>
+            <div id="gameSettingsBody"></div>
+            <div id="gameFriendsBody" style="display:none"></div>
+            <div id="reportMenu">
+                <div id="reportHolder"></div>
+            </div>
+            <div id="gameSettingsClose" class="cardClose" title="Close">
+                <i class="material-icons">&#xE5CD;</i>
+            </div>
+        </div>
+        <div id="gameUI" style="display:none">
+            <div id="chatHolder" style="display:none">
+                <input id="chatBox" placeholder="Enter Message" maxlength="30">
+            </div>
+            <div id="upgradeHolder"></div>
+            <div id="upgradeCounter"></div>
+            <div id="topInfoHolder">
+                <div id="leaderboard">
+                    Leaderboard<div id="leaderboardData"></div>
+                </div>
+                <div></div>
+                <div id="killCounter" class="resourceDisplay"></div>
+            </div>
+            <div id="itemInfoHolder" class="uiElement"></div>
+            <div id="resDisplay">
+                <div id="foodDisplay" class="resourceDisplay"></div>
+                <div id="woodDisplay" class="resourceDisplay"></div>
+                <div id="stoneDisplay" class="resourceDisplay"></div>
+                <div id="scoreDisplay" class="resourceDisplay"></div>
+            </div>
+            <div id="bottomContainer">
+                <div id="ageText"></div>
+                <div id="ageBarContainer">
+                    <div id="ageBar">
+                        <div id="ageBarBody"></div>
+                    </div>
+                </div>
+                <div id="actionBar"></div>
+            </div>
+            <div id="noticationDisplay" style="display:none"></div>
+            <div id="allianceButton" class="uiElement gameButton">
+                <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE8D3;</i>
+            </div>
+            <div id="leaderboardButton" class="uiElement gameButton">
+                <i class="material-icons" style="font-size:40px;vertical-align:middle">leaderboard</i>
+            </div>
+            <div id="storeButton" class="uiElement gameButton">
+                <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE8D1;</i>
+            </div>
+            <div id="chatButton" class="uiElement gameButton">
+                <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE8AF;</i>
+            </div>
+            <div id="autoGatherButton" class="uiElement gameButton" title="Auto attack">
+                <span>AUTO</span>
+            </div>
+            <div id="menuButton" class="uiElement gameButton" title="Menu">
+                <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE8B8;</i>
+            </div>
+            <canvas id="mapDisplay"></canvas>
+            <div id="storeMenu">
+                <div style="padding-bottom:15px">
+                    <div class="storeTab" style="margin-right:10px" onclick="changeStoreIndex(0)">Hats</div>
+                    <div class="storeTab" onclick="changeStoreIndex(1)">Accessories</div>
+                </div>
+                <div id="storeHolder"></div>
+            </div>
+            <div id="allianceMenu">
+                <div id="allianceHolder"></div>
+                <div id="allianceManager"></div>
+            </div>
+            <div id="adminButton" class="uiElement gameButton" title="Admin" style="display:none">
+                <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE32A;</i>
+            </div>
+            <div id="adminMenu">
+                <div id="adminHolder"></div>
+            </div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <canvas id="textCanvas" style="display:none"></canvas>
+        <div id="cdm-zone-end"></div>
+        <script>
+            var loadedScript = false;
 
-    <div id="noticationDisplay" style="display:none"></div>
-
-    <div id="allianceButton" class="uiElement gameButton">
-      <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE8D3;</i>
-    </div>
-    <div id="leaderboardButton" class="uiElement gameButton">
-      <i class="material-icons" style="font-size:40px;vertical-align:middle">leaderboard</i>
-    </div>
-    <div id="storeButton" class="uiElement gameButton">
-      <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE8D1;</i>
-    </div>
-    <div id="chatButton" class="uiElement gameButton">
-      <i class="material-icons" style="font-size:40px;vertical-align:middle">&#xE8AF;</i>
-    </div>
-
-    <canvas id="mapDisplay"></canvas>
-
-    <div id="storeMenu">
-      <div style="padding-bottom:15px">
-        <div class="storeTab" style="margin-right:10px" onclick="changeStoreIndex(0)">Hats</div>
-        <div class="storeTab" onclick="changeStoreIndex(1)">Accessories</div>
-      </div>
-      <div id="storeHolder"></div>
-    </div>
-
-    <div id="allianceMenu">
-      <div id="allianceHolder"></div>
-      <div id="allianceManager"></div>
-    </div>
-  </div>
-
-  <canvas id="gameCanvas"></canvas>
-
-  <script type="module" src="bundle.js"></script>
-</body>
-
+            window.frvrSdkInitPromise = FRVR.bootstrapper.init();
+            // setTimeout(function() {
+            //  if (!loadedScript) {
+            //    alert("Bundle could not load. Could be an issue with the party key.");
+            //    window.location.href = "/";
+            //  }
+            // }, 45000);
+        </script>
+        <script type="module" src="bundle.js"></script>
+    </body>
 </html>

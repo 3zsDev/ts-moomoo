@@ -2,14 +2,18 @@ import { config, endpoints } from "../config";
 import { isLocal, localSocketUrl, serverListUrl } from "../environment";
 import { connection } from "../net/Connection";
 import { createHandlers, markPingSent } from "../net/handlers";
+import { joinTicket } from "../net/api";
+import { trackGameStart } from "../net/api/auth";
 import { getCaptchaToken, resetTurnstile } from "../net/turnstile";
-import { ClientPacket } from "../net/protocol";
+import { BUILD_ID, ClientPacket, loadProtocol } from "../net/protocol";
 import { ServerBrowser } from "../net/ServerBrowser";
+import { clearTelegraphs } from "../render/layers/telegraphs";
 import { loadSetting, saveSetting } from "../utils/storage";
 import { closeAlliance, refreshNotifications } from "../ui/alliance";
 import { ui } from "../ui/elements";
 import { closeChat } from "../ui/hud";
-import { getPlayerName, hideMenu, saveName, selectedSkinColor, showMenuStatus } from "../ui/menu";
+import { onGameStart, onPlayerDeath } from "../ui/lifecycle";
+import { getPlayerName, handleDisconnect, hideMenu, saveName, selectedSkinColor, showMenuStatus } from "../ui/menu";
 import { closeStore } from "../ui/store";
 import { resetSession, state } from "./state";
 import { gameObjects } from "./world";
@@ -25,19 +29,40 @@ export function grantFollowBonus(): void {
   saveSetting("moofoll", "1");
 }
 
-export function connectToServer(): void {
+export async function connectToServer(): Promise<void> {
   const address = serverBrowser.resolve((reason) => {
     console.error("Server error:", reason);
     returnToMenu("disconnected");
   });
   if (!address) return;
 
-  let url = address.wsUrl
-    ?? (isLocal() ? localSocketUrl(address.host, address.port) : `wss://${address.host}`);
+  let url = address.wsUrl ?? (isLocal() ? localSocketUrl(address.host, address.port) : `wss://${address.host}`);
 
-  // The server rejects the handshake with close code 4001 without a captcha token, so it rides along on the query string
-  const captchaToken = getCaptchaToken();
-  if (captchaToken) url += `?token=${encodeURIComponent(captchaToken)}`;
+  // 1.9 now requires token
+  let token: string | null;
+  try {
+    token = await joinTicket(address.host, getCaptchaToken());
+  } catch (error) {
+    returnToMenu(error instanceof Error ? error.message : "disconnected");
+    return;
+  }
+  const socketUrl = new URL(url);
+  if (!isLocal()) {
+    await loadProtocol();
+    socketUrl.searchParams.set("b", BUILD_ID);
+  }
+  if (token) socketUrl.searchParams.set("token", token);
+  url = socketUrl.toString();
+  const selectedServer = serverBrowser.selectedServer();
+  console.info("[socket] connecting", {
+    host: new URL(url).host,
+    buildId: socketUrl.searchParams.get("b"),
+    queryKeys: [...socketUrl.searchParams.keys()].sort(),
+    tokenType: token?.startsWith("tk:") ? "ticket" : token?.startsWith("cf:") ? "captcha" : token ? "other" : "none",
+    reportedPlayers: selectedServer?.playerCount ?? null,
+    reportedCapacity: selectedServer?.playerCapacity ?? null,
+    reportedFull: selectedServer ? serverBrowser.isFull(selectedServer) : null,
+  });
 
   connection.connect(
     url,
@@ -49,7 +74,7 @@ export function connectToServer(): void {
       startPingLoop();
       joinGame();
     },
-    createHandlers({ onDisconnect: returnToMenu, onSetupGame, onDeath }),
+    createHandlers({ onDisconnect: returnToMenu, onSetupGame, onSpawn: onGameStart, onDeath }),
   );
 }
 
@@ -57,6 +82,7 @@ export function joinGame(): void {
   if (joined || !connection.isReady()) return;
   joined = true;
 
+  trackGameStart();
   saveName();
   showMenuStatus("Loading...");
 
@@ -77,7 +103,11 @@ function onSetupGame(): void {
 function onDeath(): void {
   joined = false;
   const me = state.me;
-  if (me) state.deathMarker = { x: me.x, y: me.y };
+  if (me) {
+    state.deathMarker = { x: me.x, y: me.y };
+    me.alive = false;
+  }
+  onPlayerDeath();
 
   ui.gameUI.style.display = "none";
   closeStore();
@@ -99,13 +129,18 @@ function onDeath(): void {
 }
 
 export function returnToMenu(reason: string): void {
+  leaveSession();
+  handleDisconnect(reason);
+}
+
+export function leaveSession(): void {
   joined = false;
   stopPingLoop();
   connection.close();
   resetTurnstile();
   resetSession();
+  clearTelegraphs();
   gameObjects.length = 0;
-  showMenuStatus(reason, true);
 }
 
 function startPingLoop(): void {

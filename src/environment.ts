@@ -1,15 +1,15 @@
 const SANDBOX_HOSTS = ["sandbox.moomoo.io", "sandbox-dev.moomoo.io"];
 const LOCAL_HOSTS = ["localhost", "127.0.0.1"];
 
-const SERVER_LIST_VERSION = {
-  root: "1.28",
-  legacy: "1.27",
-  old: "1.26",
-  sandbox: "1.28",
-} as const;
+const SERVER_LIST_VERSION = "1.28";
 
 // shard hosts - joshy like new subdomains and i lazy
 const SHARD_HOST = /^(prod|sandbox)-[a-z0-9]+\.moomoo\.io$/;
+const SITE_FLAVOURS: Record<string, string> = {
+  "moomoo.io": "prod",
+  "www.moomoo.io": "prod",
+  "sandbox.moomoo.io": "sandbox",
+};
 const DEV_HOST = /^dev[a-z0-9-]*\.moomoo\.io$/;
 
 export interface LocalSite {
@@ -42,7 +42,7 @@ export function queryParam(name: string): string | null {
 
 function siteFlavour(): string | null {
   const host = hostname();
-  return SHARD_HOST.exec(host)?.[1] ?? null;
+  return SHARD_HOST.exec(host)?.[1] ?? SITE_FLAVOURS[host] ?? null;
 }
 
 export function isSandbox(): boolean {
@@ -90,12 +90,7 @@ export function apiBase(): string {
 }
 
 export function serverListUrl(): string {
-  const version = isSandbox()
-    ? SERVER_LIST_VERSION.sandbox
-    : siteFlavour() || isDev()
-      ? SERVER_LIST_VERSION.legacy
-      : SERVER_LIST_VERSION.root;
-  return `${apiBase()}/servers?v=${version}`;
+  return `${apiBase()}/servers?v=${SERVER_LIST_VERSION}`;
 }
 
 export function localSocketUrl(host: string, port?: number): string {

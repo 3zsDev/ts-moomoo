@@ -1,7 +1,7 @@
 import { outlineWidth, paletteColors } from "../../config";
 import type { GameObject } from "../../entities/GameObject";
 import { randInt, TAU } from "../../utils/math";
-import { renderBlob, renderCircle, renderStar } from "../shapes";
+import { renderBlob, renderCircle, renderStar } from "../canvas/shapes";
 import { Biome, biomeAt } from "./biome";
 
 const cache: Record<string, HTMLCanvasElement> = {};

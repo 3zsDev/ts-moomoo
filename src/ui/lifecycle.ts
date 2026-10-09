@@ -1,5 +1,5 @@
 import { serverBrowser } from "../game/session";
-import { enableJoysticks, isMobileDevice, setUsingTouch } from "../input";
+import { boundKey, enableJoysticks, isMobileDevice, setUsingTouch } from "../input";
 import { friends } from "../net/api";
 import { closeAdminMenu, isAdminMenuOpen } from "./admin";
 import { closeAlliance, isAllianceOpen } from "./alliance";
@@ -39,7 +39,7 @@ export function handleGameEscape(): void {
     if (isProfileOpen()) closeProfile();
     closeClanCard();
     closeGameMenu();
-  } else {
+  } else if (!boundKey("menu_game")) {
     showGameMenu();
   }
 }
@@ -58,7 +58,6 @@ export function onGameStart(): void {
   if (isMobileDevice()) {
     enableJoysticks({
       onGrab: () => {
-        closeStore();
         closeAlliance();
         setUsingTouch(true);
       },

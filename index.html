@@ -4,7 +4,7 @@
         <script type="importmap">
             {
                 "imports": {
-                    "moomoo-protocol": "/p/s16nx6.js"
+                    "moomoo-protocol": "/p/s16nz1.js"
                 }
             }</script>
         <meta charset="UTF-8">
@@ -81,17 +81,17 @@
         <link rel="preconnect" href="https://api.moomoo.io" crossorigin>
         <link rel="preconnect" href="https://challenges.cloudflare.com">
         <link rel="preload" href="./css/fonts/qWcyB624q4L_C4jGQ9IK0O_dFlnrtREl.woff2" as="font" type="font/woff2" crossorigin>
-        <link rel="stylesheet" href="css/main.css?51"/>
+        <link rel="stylesheet" href="css/main.css?52"/>
         <link href="./css/material-icons.css?4" rel="stylesheet">
         <link href="./css/hammersmith-one.css?3" rel="stylesheet">
-        <script type="module" crossorigin src="./assets/index-7977d44a.js"></script>
+        <script type="module" crossorigin src="./assets/index-12d386a8.js"></script>
         <link rel="modulepreload" crossorigin href="./assets/vendor-a3a301f0.js">
     </head>
     <body>
         <script src="./libs/frvr-sdk.min.js?4"></script>
         <script src="./libs/frvr-channel-web.min.js?4"></script>
         <script>
-            window.FRVR.config = {
+            if (window.FRVR) window.FRVR.config = {
                 "gameId": "moomoo",
                 "consent": {
                     "providerName": "cookiepro",
@@ -121,7 +121,7 @@
                     }
                 }
             };
-            try {
+            if (window.FRVR) try {
                 const isMoomooIo = document.location.hostname.endsWith('moomoo.io');
                 const isKrunkerIo = document.location.hostname.endsWith('krunker.io');
                 const cookieproKey = isMoomooIo ? "c94e102c-455a-4bf1-82b7-8c7f938301b6" : "15b4472b-823a-468e-b5eb-6eeaca5d6de4";
@@ -134,7 +134,7 @@
                 window.FRVR.init('prod');
                 window.FRVR.tracker.addExtraFieldFunction(function(fields) {
                     fields.context = 'moomoo';
-                    fields.app_version = '1.9.1';
+                    fields.app_version = '1.9.2';
                     if (isKrunkerIo) {
                         fields.channel = 'krunker_io';
                     } else if (isMoomooIo) {
@@ -248,28 +248,35 @@
                                     <input id="showFps" type="checkbox"/>Show FPS
                                 </div>
                                 <div class="settingRadio">
+                                    <input id="showCps" type="checkbox"/>Show CPS
+                                </div>
+                                <div class="settingRadio">
                                     <input id="showGrid" type="checkbox"/>Show Grid
                                 </div>
                                 <div class="settingRadio">
                                     <input id="cameraLock" type="checkbox"/>Camera Lock
                                 </div>
-                                <div id="accountPrefs" style="display:none">
-                                    <div class="settingRadio">
-                                        <input id="prefFriendNotifs" type="checkbox"/>Friend Notifications
-                                    </div>
-                                    <div class="settingRadio">
-                                        <input id="prefFriendRequests" type="checkbox"/>Allow Friend Requests
-                                    </div>
-                                    <div class="settingRadio">
-                                        <input id="prefClanInvites" type="checkbox"/>Allow Clan Invitations
-                                    </div>
+                                <div class="settingRadio" id="aimFollowsRow" style="display:none">
+                                    <input id="aimFollows" type="checkbox"/>Aim Follows Movement
+                                </div>
+                                <div id="settingsLinks">
+                                    <a class="settingsLink" data-popup="social">
+                                        <i class="material-icons">&#xE7FB;</i>
+                                        <span>Social</span>
+                                        <i class="material-icons go">&#xE5CC;</i>
+                                    </a>
+                                    <a class="settingsLink" data-popup="shop">
+                                        <i class="material-icons">&#xE8D1;</i>
+                                        <span>Shop</span>
+                                        <i class="material-icons go">&#xE5CC;</i>
+                                    </a>
+                                    <a class="settingsLink" data-popup="keys" id="keybindLink">
+                                        <i class="material-icons">&#xE312;</i>
+                                        <span>Keys</span>
+                                        <i class="material-icons go">&#xE5CC;</i>
+                                    </a>
                                 </div>
                                 <a id="textureLink" class="menuLink" style="display:none">Texture pack (dev)</a>
-                                <div id="keybindSection">
-                                    <div class="menuHeader">Keys</div>
-                                    <div class="menuText">Click a key to change it. Items can be bound by where they sit in your bar, by what they are, or both. Items you only ever have one of (pit trap or boost pad, say) share a row and a key.</div>
-                                    <div id="keybindHolder"></div>
-                                </div>
                                 <div id="altServer"></div>
                             </div>
                         </div>
@@ -352,7 +359,7 @@
             </div>
             <div id="topSpot" style="display:none"></div>
             <div id="linksContainer2">
-                <a href="./docs/versions.txt" target="_blank" class="menuLink" draggable="false">v1.9.1</a>
+                <a href="./docs/versions.txt" target="_blank" class="menuLink" draggable="false">v1.9.2</a>
                 | <a href="https://discord.gg/MqpUzka" target="_blank" class="menuLink" draggable="false">Discord</a>
                 | <a href="https://frvr.com/legal#TermsofService" target="_blank" class="menuLink" draggable="false">Terms</a>
                 | <a href="https://frvr.com/legal#PrivacyPolicy" target="_blank" class="menuLink" draggable="false">Privacy</a>
@@ -370,11 +377,58 @@
                 <span id="pingText">-- ms</span>
             </span>
             <span id="fpsDisplay" hidden>-- FPS</span>
+            <span id="cpsDisplay" hidden>0 CPS</span>
         </div>
         <div id="diedText">YOU DIED</div>
         <div id="touch-controls-left"></div>
         <div id="touch-controls-right"></div>
         <div id="touch-controls-fullscreen"></div>
+        <div id="settingsPopup" class="menuCard" style="display:none">
+            <div class="viewHeader">
+                <span id="settingsPopupTitle"></span>
+                <a id="settingsPopupClose" class="viewBack">
+                    <i class="material-icons">&#xE5CD;</i>
+                </a>
+            </div>
+            <div class="viewBody">
+                <div class="popupPart" data-part="social" style="display:none">
+                    <div id="socialSignedOut" class="menuText"></div>
+                    <div id="accountPrefs" style="display:none">
+                        <div class="settingRadio">
+                            <input id="prefFriendNotifs" type="checkbox"/>Friend Notifications
+                        </div>
+                        <div class="settingRadio">
+                            <input id="prefFriendRequests" type="checkbox"/>Allow Friend Requests
+                        </div>
+                        <div class="settingRadio">
+                            <input id="prefClanInvites" type="checkbox"/>Allow Clan Invitations
+                        </div>
+                        <div class="settingRadio" title="Other players see Anon#number for your name, and no clan. You still see your own.">
+                            <input id="prefAnon" type="checkbox"/>Anonymous Mode
+                        </div>
+                        <div class="settingRadio" id="prefAnonSelfRow" style="margin-left:26px">
+                            <input id="prefAnonSelf" type="checkbox"/>Show my own name to me
+                        </div>
+                        <div id="prefAnonNote" class="keybindNote" style="display:none"></div>
+                    </div>
+                    <a id="settingsProfileLink" class="menuLink">My profile</a> <a id="settingsLookLink" class="menuLink">Edit look</a>
+                </div>
+                <div class="popupPart" data-part="look" style="display:none">
+                    <div id="lookEditor"></div>
+                </div>
+                <div class="popupPart" data-part="shop" id="shopSection" style="display:none">
+                    <div class="menuText">Drag items into the order you want them in the shop. The eye hides one.</div>
+                    <div class="settingRadio">
+                        <input id="shopCombined" type="checkbox"/>Combined Shop
+                    </div>
+                    <div id="shopEditor"></div>
+                </div>
+                <div class="popupPart" data-part="keys" id="keybindSection" style="display:none">
+                    <div class="menuText">Click a key to change it. Items can be bound by where they sit in your bar, by what they are, or both. Items you only ever have one of (pit trap or boost pad, say) share a row and a key.</div>
+                    <div id="keybindHolder"></div>
+                </div>
+            </div>
+        </div>
         <div id="profileCard" class="menuCard" style="display:none">
             <div class="menuHeader" id="profileName"></div>
             <div id="profileRole"></div>
@@ -524,7 +578,7 @@
         <script>
             var loadedScript = false;
 
-            window.frvrSdkInitPromise = FRVR.bootstrapper.init();
+            if (window.FRVR) window.frvrSdkInitPromise = FRVR.bootstrapper.init();
             // setTimeout(function() {
             //  if (!loadedScript) {
             //    alert("Bundle could not load. Could be an issue with the party key.");

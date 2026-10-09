@@ -1,7 +1,7 @@
 import { censor, isRude, sanitize } from "../../../../api/lib/filter.mjs";
 import { liveNameBlocked } from "./nameFilter";
 import { serverConfig } from "../../config";
-import { reportLife, reportPlayer, type ReportTarget, type Session } from "../../net/api";
+import { fetchProfile, reportLife, reportPlayer, type LifeReport, type ReportTarget, type Session } from "../../net/api";
 import type { SimClient } from "../client";
 import {
   accessories, Animal, AnimalManager, ClientPacket, config, findAccessory, findHat,
@@ -10,7 +10,7 @@ import {
   type Cosmetic, type Damageable, type MsgPackValue, type ServerHooks,
 } from "../../shared";
 import { createSimPlugin, type SimHost, type SimPlugin } from "../plugin";
-import { runAdminCommand } from "./admin";
+import { canRunAdminCommand, runAdminCommand } from "./admin";
 import { arenaBosses } from "./arena";
 import { ClanManager } from "./clans";
 import { FallsDirector } from "./falls";
@@ -20,6 +20,7 @@ const deltaSpeed = 1000 / config.serverUpdateRate;
 const YETI = 10;
 const SPIN_MS = 16;
 const LEADERBOARD_INTERVAL = 1000;
+const ANON_COOLDOWN = 30000;
 const GOLD_INTERVAL = 1000;
 const LEADERBOARD_SIZE = 10;
 const MAX_CHAT_LENGTH = 30;
@@ -75,6 +76,8 @@ export class Game implements SimHost {
   private readonly views = new Map<Player, ViewState>();
   private readonly statsTargets = new Map<Player, number>();
   private readonly sessions = new Map<Player, Session>();
+  private readonly anonymous = new Set<Player>();
+  private readonly anonChangedAt = new Map<Player, number>();
   private readonly lifeStart = new Map<Player, number>();
   private reservedNames = new Set<string>();
 
@@ -283,6 +286,8 @@ export class Game implements SimHost {
 
     if (player.alive) this.submitLife(player, false);
     this.sessions.delete(player);
+    this.anonymous.delete(player);
+    this.anonChangedAt.delete(player);
 
     this.clans.remove(player);
     this.objectManager.removeAllItems(player.sid, this.hooks);
@@ -334,18 +339,37 @@ export class Game implements SimHost {
       animalDamage: Math.round(stats.animalDamage),
       animalKills,
       playtime: Date.now() - start,
+      owned: this.ownedThisLife(player),
+      look: {
+        hat: player.skinIndex,
+        acc: player.tailIndex,
+        weapon: player.weaponIndex,
+        variant: config.fetchVariant(player).id,
+        color: player.skinColor,
+      },
     });
+  }
+
+  private ownedThisLife(player: Player): LifeReport["owned"] {
+    const weapons: Record<number, number> = {};
+    for (const id of player.weapons) {
+      weapons[id] = config.fetchVariant({ weaponIndex: id, weaponXP: player.weaponXP, member: player.member }).id;
+    }
+    const ids = (owned: Record<number, number>) => Object.keys(owned).filter((id) => owned[Number(id)]).map(Number);
+    return { hats: ids(player.skins), accs: ids(player.tails), weapons };
   }
 
   private join(client: SimClient, player: Player, raw: MsgPackValue): void {
     if (player.alive) return;
 
-    const data = (raw ?? {}) as { name?: string; moofoll?: unknown; skin?: unknown };
+    const data = (raw ?? {}) as { name?: string; moofoll?: unknown; skin?: unknown; anon?: unknown };
     const account = this.sessions.get(player)?.account;
 
     let name = sanitize(String(data.name ?? "")).trim();
     if (account?.name) name = account.name;
     else if (isRude(name) || liveNameBlocked(name) || this.reservedNames.has(name.toLowerCase())) name = "unknown";
+    if (account?.name && data.anon === 1) this.anonymous.add(player);
+    else this.anonymous.delete(player);
     player.clan = account?.clan ?? null;
 
     this.spawnPlayer(player, name, Number(data.skin) || 0, !!data.moofoll);
@@ -441,8 +465,13 @@ export class Game implements SimHost {
         if (!target) return;
         this.statsTargets.set(player, target.sid);
         this.sendStats(player, target);
+        void this.sendProfile(player, target);
         return;
       }
+
+      case ClientPacket.SetAnonymous:
+        this.setAnonymous(player, args[0] === 1);
+        return;
 
       case ClientPacket.ReportPlayer: {
         const target = this.findPlayer(Number(args[0]));
@@ -453,7 +482,7 @@ export class Game implements SimHost {
       }
 
       case ClientPacket.AdminCommand:
-        if (player.alive && (serverConfig.localAdmin || this.sessions.get(player)?.account?.role === "admin")) {
+        if (player.alive && (serverConfig.localAdmin || canRunAdminCommand(this.sessions.get(player)?.account?.role, args[0]))) {
           runAdminCommand(this, player, args);
         }
         return;
@@ -1014,7 +1043,7 @@ export class Game implements SimHost {
         other.sentTo[player.id] = true;
         client.send(
           ServerPacket.AddPlayer,
-          other.getData() as unknown as MsgPackValue,
+          this.playerDataFor(other, player),
           other === player ? 1 : 0,
         );
       }
@@ -1057,6 +1086,45 @@ export class Game implements SimHost {
     return hidden;
   }
 
+  private isAnonymousTo(player: Player, viewer: Player): boolean {
+    return player !== viewer && this.anonymous.has(player);
+  }
+
+  private playerDataFor(player: Player, viewer: Player): MsgPackValue {
+    const data = player.getData() as unknown as MsgPackValue[];
+    if (this.isAnonymousTo(player, viewer)) {
+      data[2] = `Anon#${player.sid}`;
+      data[12] = null;
+    }
+    return data;
+  }
+
+  private setAnonymous(player: Player, on: boolean): void {
+    if (!this.sessions.get(player)?.account?.name || this.anonymous.has(player) === on) return;
+    const now = Date.now();
+    if (now - (this.anonChangedAt.get(player) ?? 0) < ANON_COOLDOWN) return;
+    this.anonChangedAt.set(player, now);
+
+    if (on) this.anonymous.add(player);
+    else this.anonymous.delete(player);
+    for (const id of Object.keys(player.sentTo)) if (id !== player.id) delete player.sentTo[id];
+  }
+
+  private async sendProfile(viewer: Player, target: Player): Promise<void> {
+    const client = this.clientsByPlayer.get(viewer);
+    const account = this.sessions.get(target)?.account;
+    if (!client || !account?.name) return;
+
+    if (this.isAnonymousTo(target, viewer)) {
+      client.send(ServerPacket.PlayerProfile, target.sid, JSON.stringify({ name: `Anon#${target.sid}`, anon: true, guest: false }));
+      return;
+    }
+    const profile = await fetchProfile(account.name);
+    if (profile && this.statsTargets.get(viewer) === target.sid) {
+      client.send(ServerPacket.PlayerProfile, target.sid, JSON.stringify(profile));
+    }
+  }
+
   private tickLeaderboard(delta: number): void {
     this.leaderboardTimer += delta;
     if (this.leaderboardTimer < LEADERBOARD_INTERVAL) return;
@@ -1076,12 +1144,13 @@ export class Game implements SimHost {
     const tribeTags: MsgPackValue[] = [];
 
     for (const player of ranked) {
-      rows.push(player.sid, player.name, Math.round(player.points));
+      const anonymous = this.anonymous.has(player);
+      rows.push(player.sid, anonymous ? `Anon#${player.sid}` : player.name, Math.round(player.points));
       if (!player.alive) dead.push(player.sid);
 
       const account = this.sessions.get(player)?.account;
       if (account) roles.push(player.sid, account.role ? ROLE_BADGES[account.role] : 0);
-      if (player.clan) clanTags.push(player.sid, player.clan);
+      if (player.clan && !anonymous) clanTags.push(player.sid, player.clan);
       if (player.team) tribeTags.push(player.sid, player.team);
     }
     const crabKillers = ranked.filter((player) => this.falls.crabKillers.has(player.sid)).map((player) => player.sid);

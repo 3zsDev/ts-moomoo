@@ -3,7 +3,6 @@ import { createElement, findById } from "../../utils/dom";
 import { ui } from "../elements";
 
 export function bindPageChrome(): void {
-  bindAltServerLink();
   bindBackToMain();
   bindLeaderboardToggle();
   bindErrorNotification();
@@ -19,24 +18,12 @@ function linkWithArrow(parent: HTMLElement, href: string, label: string): void {
   createElement({ tag: "i", class: "material-icons", style: ALT_SERVER_ICON_STYLE, text: ALT_SERVER_ICON, parent: link });
 }
 
-function bindAltServerLink(): void {
-  const holder = findById("altServer");
-  if (!holder) return;
-  holder.textContent = "";
-  // Sandbox already has "Back to MooMoo" on the play view.
-  if (isSandbox()) return;
-  const alternate = alternateSite();
-  linkWithArrow(holder, alternate.href, alternate.label);
-}
-
-// Live puts a "Back to MooMoo" link on the sandbox play view.
 function bindBackToMain(): void {
   if (!isSandbox()) return;
   ui.backToMain.textContent = "";
   linkWithArrow(ui.backToMain, alternateSite().href, "Back to MooMoo");
 }
 
-// Hold the button (touch or mouse) to peek at the leaderboard.
 function bindLeaderboardToggle(): void {
   const button = ui.leaderboardButton;
   const board = ui.leaderboard;

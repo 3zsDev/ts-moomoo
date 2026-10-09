@@ -48,6 +48,31 @@ export function playerStats(
   for (const listener of listeners) listener(stats);
 }
 
+let pendingProfile: { sid: number; resolve: (profile: unknown) => void } | null = null;
+const PROFILE_WAIT = 3000;
+
+export function awaitPlayerProfile<T>(sid: number, fallback: () => Promise<T | null>): Promise<T | null> {
+  return new Promise((resolve) => {
+    const request = (pendingProfile = { sid, resolve: resolve as (profile: unknown) => void });
+    setTimeout(() => {
+      if (pendingProfile !== request) return;
+      pendingProfile = null;
+      fallback().then(resolve, () => resolve(null));
+    }, PROFILE_WAIT);
+  });
+}
+
+export function playerProfile(sid: number, json: string): void {
+  if (!pendingProfile || pendingProfile.sid !== sid) return;
+  const request = pendingProfile;
+  pendingProfile = null;
+  let profile: unknown = null;
+  try {
+    profile = JSON.parse(json);
+  } catch {}
+  request.resolve(profile);
+}
+
 export type ReportAction = 0 | 1 | 2;
 
 export function reportPlayer(sid: number, action: ReportAction = 0, reason = 0): void {

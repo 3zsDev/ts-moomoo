@@ -1,3 +1,4 @@
+import type { Painter } from "./painter";
 class FloatingText {
   public x = 0;
   public y = 0;
@@ -43,23 +44,19 @@ class FloatingText {
     }
   }
 
-  public render(ctx: CanvasRenderingContext2D, cameraX: number, cameraY: number): void {
-    ctx.fillStyle = this.color;
-    ctx.font = `${this.scale}px Hammersmith One`;
-    ctx.fillText(this.text, this.x - cameraX, this.y - cameraY);
+  public render(painter: Painter, cameraX: number, cameraY: number): void {
+    painter.text(this.text, this.x - cameraX, this.y - cameraY, this.scale, { color: this.color });
   }
 }
 
 export class TextManager {
   private readonly texts: FloatingText[] = [];
 
-  public update(delta: number, ctx: CanvasRenderingContext2D, cameraX: number, cameraY: number): void {
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
+  public update(delta: number, painter: Painter, cameraX: number, cameraY: number): void {
     for (const text of this.texts) {
       if (!text.life) continue;
       text.update(delta);
-      text.render(ctx, cameraX, cameraY);
+      text.render(painter, cameraX, cameraY);
     }
   }
 

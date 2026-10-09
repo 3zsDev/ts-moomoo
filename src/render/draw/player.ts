@@ -1,14 +1,13 @@
+import type { Painter } from "../painter";
 import { config, outlineWidth } from "../../config";
 import { findAccessory, findHat, type Cosmetic } from "../../data/cosmetics";
 import { itemData } from "../../data/items";
 import type { Player } from "../../entities/Player";
-import { renderCircle } from "../shapes";
 import { getItemSprite, sprites } from "../sprites";
 import { renderProjectileSprite } from "./projectile";
 
-export function renderPlayer(ctx: CanvasRenderingContext2D, player: Player): void {
-  ctx.lineWidth = outlineWidth;
-  ctx.lineJoin = "miter";
+export function renderPlayer(painter: Painter, player: Player): void {
+  painter.lineWidth = outlineWidth;
 
   const weapon = itemData.weapons[player.weaponIndex];
   const holdingWeapon = player.buildIndex < 0;
@@ -17,41 +16,40 @@ export function renderPlayer(ctx: CanvasRenderingContext2D, player: Player): voi
   const offHandSpread = (holdingWeapon && weapon.hndS) || 1;
   const offHandDistance = (holdingWeapon && weapon.hndD) || 1;
 
-  if (player.tailIndex > 0) renderAccessory(ctx, player, player.tailIndex);
-  if (holdingWeapon && !weapon.aboveHand) renderHeldWeapon(ctx, player);
+  if (player.tailIndex > 0) renderAccessory(painter, player, player.tailIndex);
+  if (holdingWeapon && !weapon.aboveHand) renderHeldWeapon(painter, player);
 
-  ctx.fillStyle = config.skinColors[player.skinColor];
-  renderCircle(ctx, player.scale * Math.cos(armSpread), player.scale * Math.sin(armSpread), 14);
-  renderCircle(
-    ctx,
+  painter.fillStyle = config.skinColors[player.skinColor];
+  painter.circle(player.scale * Math.cos(armSpread), player.scale * Math.sin(armSpread), 14, true, true);
+  painter.circle(
     player.scale * offHandDistance * Math.cos(-armSpread * offHandSpread),
     player.scale * offHandDistance * Math.sin(-armSpread * offHandSpread),
-    14,
+    14, true, true,
   );
 
-  if (holdingWeapon && weapon.aboveHand) renderHeldWeapon(ctx, player);
+  if (holdingWeapon && weapon.aboveHand) renderHeldWeapon(painter, player);
 
   if (player.buildIndex >= 0) {
     const item = itemData.list[player.buildIndex];
     const sprite = getItemSprite(item);
-    ctx.drawImage(sprite, player.scale - item.holdOffset, -sprite.width / 2);
+    painter.drawImage(sprite, player.scale - item.holdOffset, -sprite.width / 2);
   }
 
-  renderCircle(ctx, 0, 0, player.scale);
+  painter.circle(0, 0, player.scale, true, true);
 
   if (player.skinIndex > 0) {
-    ctx.rotate(Math.PI / 2);
-    renderHat(ctx, player);
+    painter.rotate(Math.PI / 2);
+    renderHat(painter, player);
   }
 }
 
-function renderHeldWeapon(ctx: CanvasRenderingContext2D, player: Player): void {
+function renderHeldWeapon(painter: Painter, player: Player): void {
   const weapon = itemData.weapons[player.weaponIndex];
   const variant = config.weaponVariants[player.weaponVariant] ?? config.weaponVariants[0];
 
   const image = sprites.weapon(weapon.src + variant.src);
   if (image.isLoaded) {
-    ctx.drawImage(
+    painter.drawImage(
       image,
       player.scale + weapon.xOff - weapon.length / 2,
       weapon.yOff - weapon.width / 2,
@@ -61,43 +59,43 @@ function renderHeldWeapon(ctx: CanvasRenderingContext2D, player: Player): void {
   }
 
   if (weapon.projectile != null && !weapon.hideProjectile) {
-    renderProjectileSprite(ctx, player.scale, 0, itemData.projectiles[weapon.projectile]);
+    renderProjectileSprite(painter, player.scale, 0, itemData.projectiles[weapon.projectile]);
   }
 }
 
-function renderHat(ctx: CanvasRenderingContext2D, player: Player): void {
+function renderHat(painter: Painter, player: Player): void {
   const definition = findHat(player.skinIndex);
   if (!definition) return;
 
-  renderCosmetic(ctx, sprites.hat(player.skinIndex), definition);
+  renderCosmetic(painter, sprites.hat(player.skinIndex), definition);
 
   if (definition.topSprite) {
-    ctx.save();
-    ctx.rotate(player.skinRot);
-    renderCosmetic(ctx, sprites.hat(`${player.skinIndex}_top`), definition);
-    ctx.restore();
+    painter.save();
+    painter.rotate(player.skinRot);
+    renderCosmetic(painter, sprites.hat(`${player.skinIndex}_top`), definition);
+    painter.restore();
   }
 }
 
-function renderAccessory(ctx: CanvasRenderingContext2D, player: Player, accessoryId: number): void {
+function renderAccessory(painter: Painter, player: Player, accessoryId: number): void {
   const definition = findAccessory(accessoryId);
   if (!definition) return;
 
   const image = sprites.accessory(accessoryId);
   if (!image.isLoaded) return;
 
-  ctx.save();
-  ctx.translate(-20 - (definition.xOff ?? 0), 0);
-  if (definition.spin) ctx.rotate(player.skinRot);
-  renderCosmetic(ctx, image, definition);
-  ctx.restore();
+  painter.save();
+  painter.translate(-20 - (definition.xOff ?? 0), 0);
+  if (definition.spin) painter.rotate(player.skinRot);
+  renderCosmetic(painter, image, definition);
+  painter.restore();
 }
 
 function renderCosmetic(
-  ctx: CanvasRenderingContext2D,
+  painter: Painter,
   image: HTMLImageElement & { isLoaded?: boolean },
   definition: Cosmetic,
 ): void {
   if (!image.isLoaded) return;
-  ctx.drawImage(image, -definition.scale / 2, -definition.scale / 2, definition.scale, definition.scale);
+  painter.drawImage(image, -definition.scale / 2, -definition.scale / 2, definition.scale, definition.scale);
 }

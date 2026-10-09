@@ -37,7 +37,7 @@ export const hats: Cosmetic[] = [
   { id: 12, name: "Booster Hat", price: 6000, scale: 120, spdMult: 1.16, desc: "increases your movement speed" },
   { id: 26, name: "Barbarian Armor", price: 8000, scale: 120, dmgK: 0.6, desc: "knocks back enemies that attack you" },
   { id: 60, name: "Frost Helm", price: 7000, scale: 120, coldM: 1, spdMult: 0.94, dmgMult: 0.88, desc: "normal speed in snow and reduces damage taken" },
-  { id: 61, name: "Crab Shell", dontSell: true, earned: true, price: 0, scale: 120, dmg: 0.3, dmgMult: 0.85, spdMult: 0.92, desc: "dropped by the Crab King. reflects damage and reduces damage taken" },
+  { id: 61, name: "Crab Shell", dontSell: true, earned: true, price: 0, scale: 120, dmg: 0.375, dmgMult: 0.8, spdMult: 0.93, desc: "dropped by the Crab King. reflects damage and reduces damage taken" },
   { id: 21, name: "Plague Mask", price: 10000, scale: 120, poisonDmg: 5, poisonTime: 6, desc: "melee attacks deal poison damage" },
   { id: 46, name: "Bull Mask", price: 10000, scale: 120, bullRepel: 1, desc: "bulls won't target you unless you attack them" },
   { id: 14, name: "Windmill Hat", topSprite: true, price: 10000, scale: 120, pps: 1.5, desc: "generates points while worn" },

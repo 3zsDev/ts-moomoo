@@ -31,6 +31,8 @@ export interface LifeReport {
   animalDamage: number;
   animalKills: Record<string, number>;
   playtime: number;
+  owned: { hats: number[]; accs: number[]; weapons: Record<number, number> };
+  look: { hat: number; acc: number; weapon: number; variant: number; color: number };
 }
 
 export interface ReportTarget {
@@ -95,6 +97,10 @@ export async function reportPlayer(
     "POST", "/internal/report", { reporter, target, action, reason: reason || undefined, server: serverKey },
   );
   return result?.verdict ?? null;
+}
+
+export async function fetchProfile(name: string): Promise<Record<string, unknown> | null> {
+  return call("GET", `/profile?name=${encodeURIComponent(name)}`);
 }
 
 export async function fetchReserved(): Promise<{ names: string[]; clans: string[] } | null> {

@@ -1,7 +1,8 @@
 import { isRude, sanitize } from "../lib/filter.mjs";
 import { fail, ok, RateLimiter } from "../lib/http.mjs";
+import { liveGet } from "../lib/mirror.mjs";
 import { read } from "../lib/periods.mjs";
-import { prefsOf, signedIn } from "./accounts.mjs";
+import { prefsOf, signedIn, viaLive } from "./accounts.mjs";
 
 const CLAN_NAME = /^[A-Za-z0-9]{3,4}$/;
 const MAX_MEMBERS = 80;
@@ -102,10 +103,16 @@ export const clanRoutes = {
   "GET /clan": async (ctx, { query, ip }) => {
     if (!lookups.allow(ip)) return fail(429, "slow down");
     const clan = ctx.store.clanByName(query.get("name"));
-    return clan ? ok(clanView(ctx.store, clan, false)) : fail(404, "not found");
+    if (clan) return ok(clanView(ctx.store, clan, false));
+    const live = await liveGet(`/clan?name=${encodeURIComponent(query.get("name") ?? "")}`);
+    return live ? ok(live) : fail(404, "not found");
   },
 
-  "GET /clan-check": async (ctx, { query }) => ok({ reserved: clanTaken(ctx.store, query.get("name")) }),
+  "GET /clan-check": async (ctx, { query }) => {
+    if (clanTaken(ctx.store, query.get("name"))) return ok({ reserved: true });
+    const live = await liveGet(`/clan-check?name=${encodeURIComponent(query.get("name") ?? "")}`);
+    return ok({ reserved: live?.reserved === true });
+  },
 
   "POST /clan/mine": async (ctx, { body }) => {
     const user = await signedIn(ctx, body.auth);
@@ -271,3 +278,11 @@ export const clanRoutes = {
     return done(ctx);
   },
 };
+
+// a real MooMoo account's clan is its live clan: seeing and managing it goes to live
+for (const path of [
+  "/clan/mine", "/clan/create", "/clan/request", "/clan/requests", "/clan/answer", "/clan/decide",
+  "/clan/role", "/clan/kick", "/clan/invite", "/clan/leave", "/clan/disband",
+]) {
+  clanRoutes[`POST ${path}`] = viaLive(path, clanRoutes[`POST ${path}`]);
+}

@@ -11,11 +11,7 @@ const RIVER_BOTTOM = config.mapScale / 2 + config.riverWidth / 2 + config.riverP
 
 const DESERT_TOP = config.mapScale - config.snowBiomeTop;
 
-const ROCK_SPREAD = 7;
-const GOLD_SPREAD = 7;
-
 const CACTUS_DAMAGE = 35;
-const CACTUS_SCALES = [110, 120, 135];
 
 function isCactus(type: number, y: number): boolean {
   return type === BUSH && y >= DESERT_TOP;
@@ -118,18 +114,18 @@ export function generateWorld(objectManager: ObjectManager): void {
       }
 
       for (let i = 0; i < config.bushesPerArea; i++) {
-        const entry = scatter(placed, (y) => pick(isCactus(BUSH, y) ? CACTUS_SCALES : config.bushScales), area);
+        const entry = scatter(placed, (y) => (isCactus(BUSH, y) ? Math.max(...config.bushScales) : pick(config.bushScales)), area);
         if (entry) add(entry, BUSH);
       }
     }
   }
 
-  for (let i = 0; i < config.totalRocks * ROCK_SPREAD; i++) {
+  for (let i = 0; i < config.totalRocks; i++) {
     const entry = scatter(placed, () => pick(config.rockScales), whole, 200);
     if (entry) add(entry, ROCK);
   }
 
-  for (let i = 0; i < config.goldOres * GOLD_SPREAD; i++) {
+  for (let i = 0; i < config.goldOres; i++) {
     const entry = scatter(placed, () => pick(config.rockScales), whole, 200);
     if (entry) add(entry, GOLD);
   }

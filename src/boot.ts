@@ -4,12 +4,12 @@ import { state } from "./game/state";
 import { createBackgroundMenu } from "./game/menuWorld";
 import { grantFollowBonus, serverBrowser } from "./game/session";
 import {
-  clearHeldKeys, initInputMode, installInputHandlers, isCapturingKey, pingMinimap, sendAimAngle,
-  toggleAutoGather, touchControls,
+  bindAimFollowsSetting, clearHeldKeys, initInputMode, installInputHandlers, isCapturingKey, isMobileDevice,
+  pingMinimap, sendAimAngle, toggleAutoGather, touchControls,
 } from "./input";
 import { account, auth, friends, initAccount, isStaff, onAccountChange } from "./net/api";
 import { initTurnstile, setLocalServerSelected } from "./net/turnstile";
-import { canvas } from "./render/canvas";
+import { canvas } from "./render/surface";
 import { minimapCanvas } from "./render/minimap";
 import { updateGame } from "./render/renderer";
 import { enableProtection, ignoreSyntheticClicks } from "./security";
@@ -36,6 +36,10 @@ import {
 import { isAlive } from "./ui/netBridge";
 import { openDeepLinks } from "./ui/deepLinks";
 import { refreshNoteDots } from "./ui/noteDots";
+import { bindAnonMode } from "./ui/anonMode";
+import { redrawLeaderboard } from "./ui/hud/leaderboard";
+import { bindShopEditor } from "./ui/menu/shopEditor";
+import { bindSettingsPopup } from "./ui/menu/settingsPopup";
 import { injectStylesheets } from "./ui/stylesheets";
 import { closeStore, isStoreOpen, refreshStore, setStoreTab, toggleStore } from "./ui/store";
 import { initTexturePack } from "./ui/texturePack";
@@ -62,6 +66,10 @@ export function boot(): void {
   loadSettings();
   bindSettingToggles();
   mountKeybindSettings();
+  bindSettingsPopup();
+  bindShopEditor();
+  bindAnonMode(redrawLeaderboard);
+  bindAimFollowsSetting(isMobileDevice());
   bindSkinPicker();
   buildActionBar();
   initTexturePack(() => {
@@ -86,7 +94,7 @@ export function boot(): void {
       else if (menu === "tribe") toggleAlliance();
       else toggleGameMenu(closeOtherPanels);
     },
-    canUseHotkeys: () => !isAllianceOpen() && !isChatOpen() && !isCapturingKey(),
+    canUseHotkeys: () => (!isAllianceOpen() || Boolean(state.me?.team)) && !isChatOpen() && !isCapturingKey(),
     canToggleChat: () => !isAllianceOpen(),
     chatInput: ui.chatBox,
   });
@@ -189,7 +197,7 @@ function startServerList(): void {
   let shown = false;
   const load = () =>
     serverBrowser.load(serverListUrl()).then(() => {
-      setLocalServerSelected(serverBrowser.isLocalSelected());
+      setLocalServerSelected(serverBrowser.isLocalSelected(), serverBrowser.isLiveSelected());
     });
 
   setInterval(() => {

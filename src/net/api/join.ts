@@ -1,9 +1,10 @@
-import { apiBase, isLocal, restApiEnabled } from "../../environment";
+import { apiBase, isLocal, isSandbox, restApiEnabled } from "../../environment";
 import { loadSetting, saveSetting } from "../../utils/storage";
 import { accessToken, freshAccessToken } from "./auth";
-import { apiPost, withTimeout } from "./http";
+import { apiPost, apiPostTo, withTimeout } from "./http";
 
 export const SIGN_IN_REQUIRED = "Sign in to play on this server";
+export const LIVE_SIGN_IN_REQUIRED = "Sign in to play live servers from a local build";
 
 const DEVICE_ID_KEY = "moo_did";
 
@@ -14,8 +15,15 @@ interface JoinResponse {
   seconds?: number;
 }
 
-export async function joinTicket(host: string, captchaToken: string | null): Promise<string | null> {
-  if (!restApiEnabled()) {
+function apiForHost(host: string): string {
+  if (isSandbox()) return "https://api-sandbox2.moomoo.io";
+  if (host.startsWith("sandbox")) return "https://api-sandbox2.moomoo.io";
+  if (host.startsWith("dev")) return "https://api-dev.moomoo.io";
+  return "https://api-prod2.moomoo.io";
+}
+
+export async function joinTicket(host: string, captchaToken: string | null, live = false): Promise<string | null> {
+  if (!live && !restApiEnabled()) {
     console.info("[join] REST API disabled; using available captcha token", {
       hasCaptchaToken: captchaToken !== null,
     });
@@ -26,7 +34,8 @@ export async function joinTicket(host: string, captchaToken: string | null): Pro
 
   await withTimeout(freshAccessToken(), 5000);
   const auth = accessToken() ?? undefined;
-  if (!captcha && !auth) {
+  if (live && !auth) throw new Error(LIVE_SIGN_IN_REQUIRED);
+  if (!live && !captcha && !auth) {
     console.warn("[join] no captcha or account credential is available", {
       apiHost: new URL(apiBase()).host,
       gameHost: host,
@@ -42,16 +51,15 @@ export async function joinTicket(host: string, captchaToken: string | null): Pro
       hasCaptcha: Boolean(captcha),
       hasAccountCredential: Boolean(auth),
     });
-    response = await apiPost(
-      "/join",
-      {
-        captcha,
-        auth,
-        did: loadSetting(DEVICE_ID_KEY) || undefined,
-        host: isLocal() ? "localhost" : host,
-      },
-      8000,
-    );
+    const body = {
+      captcha,
+      auth,
+      did: loadSetting(DEVICE_ID_KEY) || undefined,
+      host: live ? host : isLocal() ? "localhost" : host,
+    };
+    response = live
+      ? await apiPostTo(apiForHost(host), "/join", body, 8000)
+      : await apiPost("/join", body, 8000);
   } catch {
     console.error("[join] server ticket request failed; falling back to captcha token", {
       apiHost: new URL(apiBase()).host,

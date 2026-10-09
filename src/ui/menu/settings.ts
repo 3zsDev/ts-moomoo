@@ -1,15 +1,17 @@
 import { camera } from "../../render/camera";
 import { isSandbox } from "../../environment";
 import { account, onAccountChange, savePref, type AccountPrefs } from "../../net/api/account";
-import { setNativeResolution } from "../../render/canvas";
+import { setNativeResolution } from "../../render/surface";
 import { byId } from "../../utils/dom";
 import { grid } from "../../render/layers/ground";
 import { loadBool, saveBool, saveSetting } from "../../utils/storage";
 import { ui } from "../elements";
 import { setNetStatsOptions } from "../hud/netStats";
+import { refreshSocialNote } from "./settingsPopup";
 
 export let showPing = false;
 export let showFps = false;
+export let showCps = false;
 
 function applyNativeResolution(enabled: boolean): void {
   setNativeResolution(enabled);
@@ -24,7 +26,9 @@ export function loadSettings(): void {
   ui.showPingToggle.checked = showPing;
   showFps = loadBool("show_fps", false);
   ui.showFpsToggle.checked = showFps;
-  setNetStatsOptions(showPing, showFps);
+  showCps = loadBool("show_cps", false);
+  ui.showCpsToggle.checked = showCps;
+  setNetStatsOptions(showPing, showFps, showCps);
 
   grid.visible = loadBool("show_grid", true);
   ui.showGridToggle.checked = grid.visible;
@@ -38,13 +42,19 @@ export function bindSettingToggles(): void {
   ui.showPingToggle.onchange = () => {
     showPing = ui.showPingToggle.checked;
     saveBool("show_ping", showPing);
-    setNetStatsOptions(showPing, showFps);
+    setNetStatsOptions(showPing, showFps, showCps);
   };
 
   ui.showFpsToggle.onchange = () => {
     showFps = ui.showFpsToggle.checked;
     saveBool("show_fps", showFps);
-    setNetStatsOptions(showPing, showFps);
+    setNetStatsOptions(showPing, showFps, showCps);
+  };
+
+  ui.showCpsToggle.onchange = () => {
+    showCps = ui.showCpsToggle.checked;
+    saveBool("show_cps", showCps);
+    setNetStatsOptions(showPing, showFps, showCps);
   };
 
   ui.showGridToggle.onchange = () => {
@@ -66,6 +76,7 @@ const PREF_TOGGLES: Record<keyof AccountPrefs, string> = {
 
 function showAccountPrefs(): void {
   byId("accountPrefs").style.display = !isSandbox() && account.name ? "" : "none";
+  refreshSocialNote();
   for (const [key, id] of Object.entries(PREF_TOGGLES)) {
     byId<HTMLInputElement>(id, "input").checked = account.prefs[key as keyof AccountPrefs];
   }

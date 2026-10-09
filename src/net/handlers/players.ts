@@ -3,6 +3,7 @@ import { findPlayerBySid } from "../../game/lookups";
 import { state } from "../../game/state";
 import { getOrCreatePlayer, removePlayerById } from "../../game/world";
 import { refreshActionBar } from "../../ui/actionBar";
+import { rememberOwnName } from "../../ui/anonMode";
 import { ui } from "../../ui/elements";
 import { refreshAge } from "../../ui/hud/ageBar";
 import { refreshResources } from "../../ui/hud/resources";
@@ -21,6 +22,7 @@ export function addPlayer(data: PlayerInitData, isYou: boolean): void {
   if (!isYou) return;
 
   state.me = player;
+  rememberOwnName(player.name);
   state.cameraX = player.x;
   state.cameraY = player.y;
   state.deathTextSize = 99999;

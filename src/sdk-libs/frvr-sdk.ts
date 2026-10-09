@@ -1574,7 +1574,7 @@ export const AUTH_ENDPOINTS = {
 };
 
 export class AuthClient {
-  private refreshPromise: Promise<any> | null = null;
+  private ongoingFRVRLogin: Promise<any> | null = null;
   private apiBaseURL: string;
 
   constructor({ apiBaseURL, env }: { apiBaseURL?: string; env: Env }) {
@@ -1584,39 +1584,64 @@ export class AuthClient {
   }
 
   isLoggingIn(): boolean {
-    return !!this.refreshPromise;
+    return !!this.ongoingFRVRLogin;
   }
 
-  async login(credentials: any): Promise<any> {
+  async register(credentials: any): Promise<any> {
     return this.fetchAndHandleCommonErrors(
+      AUTH_ENDPOINTS.AUTH_REGISTRATION,
+      {
+        201: () => RESPONSE_DEFINITIONS.REG_SUCCESS,
+        409: () => { throw RESPONSE_DEFINITIONS.REG_CONFLICT; },
+      },
+      { platform: Platform.FRVR, credentials },
+    );
+  }
+
+  async login(body: any): Promise<any> {
+    if (this.ongoingFRVRLogin) return this.ongoingFRVRLogin;
+    this.ongoingFRVRLogin = this.fetchAndHandleCommonErrors(
       AUTH_ENDPOINTS.AUTH_LOGIN,
       {
-        200: async (res: Response) => {
-          const body = await res.json();
-          const pair = new TokenPair(body.accessToken, body.refreshToken);
+        201: async (res: Response) => {
+          const data = await res.json();
+          const pair = new TokenPair(data.accessToken, data.refreshToken);
           if (pair.isAccessValid()) return { ...RESPONSE_DEFINITIONS.LOGIN_SUCCESS, tokenPair: pair };
           throw RESPONSE_DEFINITIONS.SERVER_ERROR;
         },
         401: () => { throw RESPONSE_DEFINITIONS.INVALID_CREDENTIALS; },
         403: () => { throw RESPONSE_DEFINITIONS.ACCOUNT_NOT_ACTIVE; },
       },
-      { platform: Platform.FRVR, credentials },
+      body,
     );
+    return this.ongoingFRVRLogin.finally(() => {
+      this.ongoingFRVRLogin = null;
+    });
   }
 
   async loginAsAnonymous(): Promise<any> {
     return this.login({ platform: Platform.ANONYMOUS });
   }
 
-  async requestEmailLoginCode(email: string, register = false): Promise<any> {
+  async requestEmailCode(email: string, register = false): Promise<any> {
     const endpoint = register ? AUTH_ENDPOINTS.AUTH_REGISTRATION : AUTH_ENDPOINTS.AUTH_LOGIN;
-    return this.fetchFlow(endpoint, { platform: Platform.FRVR, credentials: { email, method: 'code' } });
+    return this.fetchAuthFlow(endpoint, { platform: Platform.FRVR, credentials: { email, method: 'code' } });
+  }
+  async requestEmailLoginCode(email: string, register = false): Promise<any> {
+    return this.requestEmailCode(email, register);
   }
 
   async continueEmailCode(email: string, code: string, flowId: string, register = false): Promise<any> {
     const endpoint = register ? AUTH_ENDPOINTS.AUTH_REGISTRATION : AUTH_ENDPOINTS.AUTH_LOGIN;
-    return this.fetchFlow(
+    return this.fetchAndHandleCommonErrors(
       { ...endpoint, path: endpoint.path + '?flow=' + encodeURIComponent(flowId) },
+      {
+        200: async (res: Response) => this.parseTokens(res),
+        201: async (res: Response) => this.parseTokens(res),
+        400: () => { throw RESPONSE_DEFINITIONS.INVALID_FORMAT; },
+        401: () => { throw RESPONSE_DEFINITIONS.INVALID_CREDENTIALS; },
+        409: () => { throw RESPONSE_DEFINITIONS.REG_CONFLICT; },
+      },
       { platform: Platform.FRVR, credentials: { email, method: 'code', code } },
     );
   }
@@ -1630,33 +1655,35 @@ export class AuthClient {
         201: () => RESPONSE_DEFINITIONS.OPERATION_SUCCESS,
         401: () => { throw RESPONSE_DEFINITIONS.INVALID_CREDENTIALS; },
       },
-      { platform: Platform.FRVR, credentials: { email, method: 'code', resend: true } },
+      { platform: Platform.FRVR, credentials: { email, method: 'code', resend: 'true' } },
     );
   }
 
-  private async fetchFlow(endpoint: any, body: any): Promise<any> {
+  private async parseTokens(res: Response): Promise<any> {
+    const data = await res.json();
+    if (!data.accessToken || !data.refreshToken) throw RESPONSE_DEFINITIONS.SERVER_ERROR;
+    const pair = new TokenPair(data.accessToken, data.refreshToken);
+    if (!pair.isAccessValid()) throw RESPONSE_DEFINITIONS.SERVER_ERROR;
+    return { ...RESPONSE_DEFINITIONS.LOGIN_SUCCESS, tokenPair: pair };
+  }
+
+  private async fetchAuthFlow(endpoint: any, body: any): Promise<any> {
     return this.fetchAndHandleCommonErrors(
       endpoint,
       {
-        200: async (res: Response) => {
-          const body = await res.json();
-          if (!body.accessToken || !body.refreshToken) throw RESPONSE_DEFINITIONS.UNKNOWN_ERROR;
-          const pair = new TokenPair(body.accessToken, body.refreshToken);
-          if (!pair.isAccessValid()) throw RESPONSE_DEFINITIONS.SERVER_ERROR;
-          return { ...RESPONSE_DEFINITIONS.LOGIN_SUCCESS, tokenPair: pair };
-        },
+        200: async (res: Response) => this.parseFlow(res),
         201: async (res: Response) => this.parseFlow(res),
         401: () => { throw RESPONSE_DEFINITIONS.INVALID_CREDENTIALS; },
-        400: () => { throw RESPONSE_DEFINITIONS.INVALID_FORMAT; },
+        409: () => { throw RESPONSE_DEFINITIONS.REG_CONFLICT; },
       },
       body,
     );
   }
 
   private async parseFlow(res: Response): Promise<{ flowId: string }> {
-    const body = await res.json();
-    if (!body.flowId) throw RESPONSE_DEFINITIONS.UNKNOWN_ERROR;
-    return { flowId: body.flowId };
+    const data = await res.json();
+    if (!data.flowId) throw RESPONSE_DEFINITIONS.SERVER_ERROR;
+    return { flowId: data.flowId };
   }
 
   async checkVerification(pair: TokenPair): Promise<boolean> {
@@ -1664,8 +1691,8 @@ export class AuthClient {
       AUTH_ENDPOINTS.USER_VERIFIED,
       {
         200: async (res: Response) => {
-          const body = await res.json();
-          return body?.verified;
+          const data = await res.json();
+          return data?.verified;
         },
       },
       undefined,
@@ -1675,20 +1702,20 @@ export class AuthClient {
 
   async initiateVerifyChallenge(credentials: any): Promise<any> {
     return this.fetchAndHandleCommonErrors(
-      AUTH_ENDPOINTS.AUTH_VERIFY,
+      AUTH_ENDPOINTS.AUTH_VERIFY_CHALLENGE,
       {
-        200: () => RESPONSE_DEFINITIONS.OPERATION_SUCCESS,
+        201: () => RESPONSE_DEFINITIONS.OPERATION_SUCCESS,
         401: () => { throw RESPONSE_DEFINITIONS.INVALID_CREDENTIALS; },
       },
       { platform: Platform.FRVR, credentials },
     );
   }
 
-  async loginThroughPlatform(credentials: any): Promise<any> {
+  async initiateRecoveryChallenge(credentials: any): Promise<any> {
     return this.fetchAndHandleCommonErrors(
-      AUTH_ENDPOINTS.AUTH_RECOVER,
+      AUTH_ENDPOINTS.AUTH_RECOVER_CHALLENGE,
       {
-        200: () => RESPONSE_DEFINITIONS.OPERATION_SUCCESS,
+        201: () => RESPONSE_DEFINITIONS.OPERATION_SUCCESS,
         401: () => { throw RESPONSE_DEFINITIONS.INVALID_CREDENTIALS; },
       },
       { platform: Platform.FRVR, credentials },
@@ -1711,12 +1738,12 @@ export class AuthClient {
     return this.fetchAndHandleCommonErrors(
       AUTH_ENDPOINTS.AUTH_REFRESH,
       {
-        200: async (res: Response) => {
-          const body = await res.json();
-          if (!body.accessToken || !body.refreshToken) throw RESPONSE_DEFINITIONS.UNKNOWN_ERROR;
-          pair.updateTokens(body.accessToken, body.refreshToken);
+        201: async (res: Response) => {
+          const data = await res.json();
+          if (!data.accessToken || !data.refreshToken) throw RESPONSE_DEFINITIONS.SERVER_ERROR;
+          pair.updateTokensIfValid(data.accessToken, data.refreshToken);
           if (pair.isAccessValid()) return RESPONSE_DEFINITIONS.OPERATION_SUCCESS;
-          throw RESPONSE_DEFINITIONS.UNKNOWN_ERROR;
+          throw RESPONSE_DEFINITIONS.SERVER_ERROR;
         },
         401: () => { throw RESPONSE_DEFINITIONS.INVALID_CREDENTIALS; },
       },
@@ -1747,9 +1774,9 @@ export class AuthClient {
       case 400:
         throw RESPONSE_DEFINITIONS.INVALID_FORMAT;
       case 500:
-        throw RESPONSE_DEFINITIONS.UNKNOWN_ERROR;
+        throw RESPONSE_DEFINITIONS.SERVER_ERROR;
       default:
-        throw { ...RESPONSE_DEFINITIONS.SERVER_ERROR, payload: { status: response.status, url: endpoint } };
+        throw { ...RESPONSE_DEFINITIONS.UNKNOWN_ERROR, payload: { status: response.status, url: endpoint } };
     }
   }
 }
@@ -1809,7 +1836,7 @@ export class AuthManager {
     if (!this.tokenHandler.isRefreshValid()) this.tokenHandler.deleteStoredTokens();
 
     const api = {
-      loginWithProvider: this.loginThroughPlatform.bind(this),
+      loginWithProvider: this.loginWithProvider.bind(this),
       loginWithExternalTokens: this.loginWithExternalTokens.bind(this),
       setExternalSession: this.setExternalSession.bind(this),
       endExternalSession: this.endExternalSession.bind(this),
@@ -1825,11 +1852,11 @@ export class AuthManager {
     try {
       for (const p of this.providers) {
         await p.init(api);
-        if (p.keepsStoredSession() && !isLoggedIn) {
+        if (p.getCredentials?.() && !isLoggedIn) {
           if (p.awaitsAutoLogin?.() && this.isLoggedIn()) break;
           isLoggedIn = true;
           if (p.handlesFRVRLogin?.()) break;
-          const promise = this.loginThroughPlatform(p).catch((err) => {
+          const promise = this.loginWithProvider(p).catch((err) => {
             this.logger?.warn(`Auto login with platform ${p.getPlatformId()} failed!`, err);
           });
           if (p.awaitsAutoLogin?.()) this.ongoingFRVRLogin = promise;
@@ -1861,6 +1888,8 @@ export class AuthManager {
   }
   async getFreshAccessToken(): Promise<string | null> {
     await this.awaitSettledSession();
+    if (this.shouldRefreshTokens() && !this.inRefreshBackoff()) await this.refreshTokens();
+    if (this.requiresSettledSession() && !this.tokenHandler.isAnyValid()) return null;
     return this.tokenHandler.getAccessToken() ?? null;
   }
   getFRVRID(): string | null {
@@ -1923,14 +1952,67 @@ export class AuthManager {
 
   async registerOnFRVR(credentials: any, retry = true): Promise<any> {
     return this.client
-      .login({ platform: Platform.FRVR, credentials })
+      .register(credentials)
+      .then(() => this.loginToFRVR({ platform: Platform.FRVR, credentials }))
       .catch((err: unknown) => {
         const type = typeof err === 'object' && err !== null && 'type' in err ? err.type : undefined;
         if (type === RESPONSE_DEFINITIONS.REG_CONFLICT.type && retry) {
-          return this.client.login({ platform: Platform.FRVR, credentials });
+          return this.loginToFRVR({ platform: Platform.FRVR, credentials });
         }
         throw err;
       });
+  }
+
+  login(platform: any, credentials?: any): Promise<any> {
+    return platform && credentials
+      ? this.loginToFRVR({ platform, credentials })
+      : this.loginThroughPlatform(platform);
+  }
+  async loginToFRVR(body: any): Promise<any> {
+    const res = await this.client.login(body);
+    if (res.tokenPair) {
+      this.tokenHandler.setAsCurrent(res.tokenPair);
+      for (const p of this.providers) {
+        if (p.onFRVRTokensReceived) await p.onFRVRTokensReceived(this.tokenHandler.currentPair);
+      }
+      this.onLoginStatusChange();
+    }
+    return omit(res, 'tokenPair');
+  }
+  async loginWithProvider(provider: any): Promise<any> {
+    return this.loginToFRVR({ platform: provider?.getPlatformId(), credentials: provider?.getCredentials() });
+  }
+  getAvailableLoginPlatforms(): string[] {
+    return this.providers.filter((p) => p.isLoginSupported()).map((p) => p.getPlatformId());
+  }
+  getCredentials(): any {
+    if (!this.isLoggedIn()) return;
+    return Object.assign(
+      {
+        [Platform.FRVR]: {
+          userID: this.tokenHandler.getFRVRID(),
+          accessToken: this.tokenHandler.getAccessToken(),
+          isTokenExpired: !this.tokenHandler.isAccessValid(),
+          isVerified: this.tokenHandler.isVerified(),
+        },
+      },
+      this.getThirdPartyCredentials(),
+    );
+  }
+  getThirdPartyCredentials(): Record<string, any> {
+    const out: Record<string, any> = {};
+    this.providers.forEach((p) => {
+      if (p && p.isLoggedIn()) out[p.getPlatformId()] = p.getCredentials();
+    });
+    return out;
+  }
+  async mergeAccounts(_from?: unknown, _to?: unknown): Promise<void> {}
+  discardStoredAccount(): void {
+    const stored = (this.tokenHandler as any).storedPair as TokenPair | undefined;
+    if (stored?.refreshToken && !this.isAnonymousPair(stored)) (this.tokenHandler as any).deleteStoredTokens?.();
+  }
+  async initiateVerifyChallenge(credentials: any): Promise<any> {
+    return this.client.initiateVerifyChallenge(credentials);
   }
 
   async requestEmailLoginCode(email: string): Promise<any> {
@@ -2047,23 +2129,9 @@ export class AuthManager {
       .catch((err: unknown) => {
         throw { ...RESPONSE_DEFINITIONS.PLATFORM_LOGIN_FAIL, payload: { platform: provider.getPlatformId(), error: err } };
       })
-      .then((credentials: any) => {
-        if (credentials) return this.applyLoginResponse(provider, credentials);
+      .then((loggedIn: any) => {
+        if (loggedIn) return this.loginWithProvider(provider);
         throw { ...RESPONSE_DEFINITIONS.PLATFORM_LOGIN_FAIL, payload: { platform: provider.getPlatformId() } };
-      });
-  }
-  private async applyLoginResponse(provider: any, credentials: any): Promise<any> {
-    return this.client
-      .login({ platform: provider?.getPlatformId(), credentials })
-      .then(async (res) => {
-        if (res.tokenPair) {
-          this.tokenHandler.setAsCurrent(res.tokenPair);
-          for (const p of this.providers) {
-            if (p.onFRVRTokensReceived) await p.onFRVRTokensReceived(this.tokenHandler.currentPair);
-          }
-          this.onLoginStatusChange();
-        }
-        return omit(res, 'tokenPair');
       });
   }
 
@@ -2077,10 +2145,7 @@ export class AuthManager {
     this.logout();
   }
   async initiateRecoveryChallenge(credentials: any): Promise<any> {
-    return this.client.initiateVerifyChallenge(credentials);
-  }
-  async verifyEmail(credentials: any): Promise<any> {
-    return this.client.loginThroughPlatform(credentials);
+    return this.client.initiateRecoveryChallenge(credentials);
   }
   async changePassword(newPassword: string): Promise<any> {
     if (!this.isLoggedIn()) throw RESPONSE_DEFINITIONS.NOT_LOGGED_IN;
@@ -2094,23 +2159,7 @@ export class AuthManager {
     return this.authenticatedFetch(url, options);
   }
   async authenticatedFetch(url: string, options: RequestInit): Promise<Response> {
-    await this.awaitSettledSession();
-    if (this.shouldRefreshTokens() && !this.inRefreshBackoff()) {
-      await this.refreshTokens();
-    }
-    if (!this.tokenHandler.isAccessValid() && !this.isExternalSession()) {
-      throw RESPONSE_DEFINITIONS.NOT_LOGGED_IN;
-    }
-    const accessToken = this.tokenHandler.getAccessToken();
-    if (!accessToken) throw RESPONSE_DEFINITIONS.NOT_LOGGED_IN;
-    return fetch(url, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...Object.fromEntries(new Headers(options.headers).entries()),
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
+    return fetch(url, await this.decorateRequestWithAuth(options));
   }
 
   private async decorateRequestWithAuth(options: RequestInit): Promise<RequestInit> {
@@ -2118,11 +2167,8 @@ export class AuthManager {
     if (this.shouldRefreshTokens() && !this.inRefreshBackoff()) {
       await this.refreshTokens();
     }
-    if (!this.tokenHandler.isAccessValid() && !this.isExternalSession()) {
-      throw RESPONSE_DEFINITIONS.NOT_LOGGED_IN;
-    }
+    if (!this.tokenHandler.isAccessValid()) throw RESPONSE_DEFINITIONS.NOT_LOGGED_IN;
     const accessToken = this.tokenHandler.getAccessToken();
-    if (!accessToken) throw RESPONSE_DEFINITIONS.NOT_LOGGED_IN;
     return {
       ...options,
       headers: {
@@ -2180,11 +2226,6 @@ export class AuthManager {
 
   async awaitSettledSession(): Promise<void> {
     await this.settleSession();
-    if (this.shouldRefreshTokens() && !this.inRefreshBackoff()) {
-      await this.refreshTokens();
-    }
-    if (this.requiresSettledSession() && !this.tokenHandler.isAnyValid()) return;
-    return this.tokenHandler.getAccessToken() as any;
   }
   private requiresSettledSession(): boolean {
     return this.providers.some((p) => p.requiresSettledSession?.());
@@ -2194,8 +2235,7 @@ export class AuthManager {
   }
   private shouldRefreshTokens(): boolean {
     if (this.isExternalSession()) return !this.tokenHandler.isAccessValid();
-    if (this.shouldRefresh()) return true;
-    if (!this.tokenHandler.isRefreshValid()) return false;
+    if (!this.shouldRefresh() && this.tokenHandler.isRefreshValid()) return false;
     return !(this.requiresSettledSession() && !this.tokenHandler.getRefreshToken());
   }
   private shouldRefresh(): boolean {
@@ -2454,6 +2494,7 @@ export class SocialWebsocketClient {
   public SocialEvents = SocialEvents;
 
   constructor(private readonly config: any, private readonly container: any) {
+    const logger = config.logger ?? container.logger ?? emptyLogger;
     this.eventListeners = {
       [SocialEvents.onConnect]: [],
       [SocialEvents.onGameInvite]: [],
@@ -2462,7 +2503,7 @@ export class SocialWebsocketClient {
     this.wsClient =
       config.webSocketBuilder?.() ??
       new WebsocketClient({
-        logger: config.logger,
+        logger,
         url: () => this.getFreshUrl(config.apiHost, config.gameId),
       });
     if (!this.wsClient) throw new Error('websocket client is not defined');
@@ -2471,13 +2512,13 @@ export class SocialWebsocketClient {
       for (const f of data.friends) this.friendsStatus.set(f.userId, f);
     });
     this.on(SocialEvents.onConnect, ({ data }) => this.friendsStatus.set(data.userId, data));
-    this.wsClient.on(WebsocketEventTypes.open, () => config.logger.log('connected to social server'));
-    this.wsClient.on(WebsocketEventTypes.close, (ev) => config.logger.debug('websocket client closed', ev));
-    this.wsClient.on(WebsocketEventTypes.error, (ev) => config.logger.error('websocket client error', ev));
+    this.wsClient.on(WebsocketEventTypes.open, () => logger.log('connected to social server'));
+    this.wsClient.on(WebsocketEventTypes.close, (ev) => logger.debug('websocket client closed', ev));
+    this.wsClient.on(WebsocketEventTypes.error, (ev) => logger.error('websocket client error', ev));
     this.wsClient.on(WebsocketEventTypes.message, (ev: MessageEvent) => {
       const msg = JSON.parse(ev.data as string);
       if (Object.values(SocialEvents).includes(msg.type)) this.dispatchEvent(msg.type, msg);
-      else config.logger.error('event type is not supported');
+      else logger.error('event type is not supported');
     });
     addSdkStatusChangeListener(container.auth, (loggedIn) => this.onAuthStatusChange(loggedIn));
   }

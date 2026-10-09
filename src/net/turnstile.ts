@@ -85,8 +85,8 @@ export function setCaptchaRequired(on: boolean): void {
   if (on) ensureWidget();
 }
 
-export function setLocalServerSelected(local: boolean): void {
-  setCaptchaRequired(requiredByDefault && !local);
+export function setLocalServerSelected(local: boolean, live = false): void {
+  setCaptchaRequired(requiredByDefault && !local && !live);
 }
 
 export function isTurnstileApiReady(): boolean {

@@ -55,6 +55,7 @@ export function installKeyboardHandlers(callbacks: InputCallbacks): void {
     if (!isTextField(event.target) || !callbacks.isPlaying()) return;
     if (!Object.values(heldKeys).some(Boolean)) return;
     clearHeldKeys();
+    attack.mouse = attack.key = false;
     if (attack.held) {
       attack.held = 0;
       sendAttackState();
@@ -122,6 +123,7 @@ function handleKeyDown(event: KeyboardEvent, callbacks: InputCallbacks): void {
   } else if (movementKeys()[code]) {
     sendMoveDirection();
   } else if (id === "attack") {
+    attack.key = true;
     attack.held = 1;
     sendAttackState();
   }
@@ -151,7 +153,10 @@ function handleKeyUp(event: KeyboardEvent, callbacks: InputCallbacks): void {
   if (movementKeys()[code]) {
     sendMoveDirection();
   } else if (actionFor(code)?.id === "attack") {
-    attack.held = 0;
-    sendAttackState();
+    attack.key = false;
+    if (!attack.mouse) {
+      attack.held = 0;
+      sendAttackState();
+    }
   }
 }

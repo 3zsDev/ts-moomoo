@@ -73,7 +73,7 @@ async function initializeLocalFrvrSdk(scope: FrvrWindow): Promise<void> {
 
   frvr.tracker?.addExtraFieldFunction?.((fields) => {
     fields.context = "moomoo";
-    fields.app_version = "1.9.1";
+    fields.app_version = "1.9.2";
     fields.channel = "moomoo_io";
   });
   await scope.frvrSdkInitPromise;

@@ -12,6 +12,7 @@ export interface Profile {
   role?: StaffRole | string;
   clan?: { name: string } | null;
   guest?: boolean;
+  anon?: boolean;
   kills?: number;
   deaths?: number;
   damage?: number;
@@ -129,4 +130,26 @@ export function fetchTop(span: TopSpan): Promise<TopBoard | null> {
 
 export function clearTopCache(): void {
   for (const key of Object.keys(topCache)) delete topCache[key];
+}
+
+export interface Look {
+  hat: number;
+  acc: number;
+  weapon: number;
+  variant: number;
+  color: number;
+}
+
+export interface LookResponse {
+  options?: { hats: number[]; accs: number[]; weapons: Record<string, number> };
+  look?: Partial<Look> | null;
+  best?: Partial<Look> | null;
+}
+
+export function lookRequest(look?: Look): Promise<LookResponse> {
+  return postWithAuth("/account/look", look ? { look } : {}).then((response) => {
+    if (response.status === 400) throw new Error("That isn't yours to show yet");
+    if (!response.ok) throw new Error("Couldn't load your look");
+    return response.json() as Promise<LookResponse>;
+  });
 }

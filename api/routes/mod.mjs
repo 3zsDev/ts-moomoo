@@ -107,6 +107,7 @@ export const modRoutes = {
     if (body.role !== "mod" && body.role !== "none") return fail(400, "invalid");
 
     subject.role = body.role === "mod" ? "mod" : null;
+    subject.roleLocal = true;
     ctx.store.save();
     return ok();
   },

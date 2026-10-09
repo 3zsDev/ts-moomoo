@@ -8,7 +8,19 @@ import { movementKeys } from "./keybinds";
 
 export const heldKeys: Record<number, boolean> = {};
 
-export const attack = { held: 0 };
+export const attack = { held: 0, mouse: false, key: false };
+
+const presses: number[] = [];
+let pressCounted = false;
+
+export function countNextPress(): void {
+  pressCounted = false;
+}
+
+export function clicksPerSecond(now = Date.now()): number {
+  while (presses.length && now - presses[0] > 1000) presses.shift();
+  return presses.length;
+}
 
 let lastSentMoveAngle: number | undefined;
 
@@ -48,7 +60,9 @@ export function sendMoveDirection(): void {
 export function sendAttackState(): void {
   const me = state.me;
   if (!me?.alive) return;
-  connection.send(ClientPacket.SendHit, attack.held, me.buildIndex >= 0 ? getAimAngle() : null);
+  if (attack.held && !pressCounted) presses.push(Date.now());
+  pressCounted = Boolean(attack.held);
+  connection.send(ClientPacket.SendHit, attack.held, getAimAngle());
 }
 
 let lastSentAim: number | undefined;
@@ -88,7 +102,7 @@ export function tapBarItem(index: number, isWeapon = false): void {
 
   if (isWeapon) {
     if (attack.held) return;
-    connection.send(ClientPacket.SendHit, 1, null);
+    connection.send(ClientPacket.SendHit, 1, getAimAngle());
     setTimeout(() => {
       if (!attack.held) connection.send(ClientPacket.SendHit, 0, null);
     }, 150);
@@ -103,7 +117,6 @@ export function toggleAutoGather(): void {
   connection.send(ClientPacket.AutoGather, 1);
 }
 
-// locking rotation is now also reported to the server (K 0)
 export function toggleLockDir(): void {
   const me = state.me;
   if (!me) return;

@@ -1,4 +1,4 @@
-import { randInt } from "../../utils/math";
+import { randInt } from "../../../utils/math";
 
 export function renderStar(
   ctx: CanvasRenderingContext2D,

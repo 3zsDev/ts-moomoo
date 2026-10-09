@@ -51,6 +51,7 @@ export function createHandlers(hooks: session.HandlerHooks): PacketHandlers {
     [ServerPacket.AnimateAI]: animals.animateAI,
     [ServerPacket.BossTelegraph]: addTelegraph,
     [ServerPacket.PlayerStats]: staff.playerStats,
+    [ServerPacket.PlayerProfile]: staff.playerProfile,
 
     [ServerPacket.AddProjectile]: projectiles.addProjectile,
     [ServerPacket.RemoveProjectile]: projectiles.removeProjectile,

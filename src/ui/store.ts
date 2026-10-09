@@ -1,13 +1,14 @@
 import { imageUrl } from "../render/sprites";
-import { accessories, hats, type Cosmetic } from "../data/cosmetics";
 import { state } from "../game/state";
 import { connection } from "../net/Connection";
 import { ClientPacket } from "../net/protocol";
+import { trusted } from "../security/trusted";
 import { createElement, hookTouchEvents, removeAllChildren } from "../utils/dom";
 import { ui } from "./elements";
 import { closeGameMenu } from "./gameMenu";
 import { closeChat } from "./hud/chat";
 import { hideItemInfo, showItemInfo } from "./itemInfo";
+import { shopConfig, type ShopEntry, type ShopTab } from "./shopConfig";
 
 let activeTab = 0;
 
@@ -40,33 +41,56 @@ export function closeStore(): void {
 }
 
 export function refreshStore(): void {
-  if (!state.me) return;
+  const me = state.me;
+  if (!me) return;
   flushStoreUpdates();
 
   removeAllChildren(ui.storeHolder);
 
-  const isAccessoryTab = activeTab === 1;
-  const catalogue = isAccessoryTab ? accessories : hats;
+  const ownedEntry = (entry: ShopEntry) => Boolean(entry.kind ? me.tails[entry.item.id] : me.skins[entry.item.id]);
+  const visible = (tab: ShopTab) =>
+    shopConfig.list(tab).filter((entry) =>
+      !shopConfig.hidden(entry.key) && (!entry.item.dontSell || (entry.item.earned && ownedEntry(entry))));
 
-  const owned = isAccessoryTab ? state.me.tails : state.me.skins;
-  const order = catalogue
-    .map((cosmetic, index) => ({ cosmetic, index }))
-    .sort((a, b) =>
-      Number(Boolean(a.cosmetic.earned)) - Number(Boolean(b.cosmetic.earned)) ||
-      (a.cosmetic.price || 0) - (b.cosmetic.price || 0) ||
-      a.index - b.index);
+  let tab: ShopTab = "all";
+  let showTabs = false;
+  if (!shopConfig.combined()) {
+    const anyHats = visible("hats").length > 0;
+    const anyAccessories = visible("acc").length > 0;
+    showTabs = anyHats && anyAccessories;
+    if (!showTabs && (anyHats || anyAccessories)) tab = anyHats ? "hats" : "acc";
+    else tab = activeTab === 1 ? "acc" : "hats";
+  }
+  const tabBar = ui.storeMenu.firstElementChild as HTMLElement | null;
+  if (tabBar) tabBar.style.display = showTabs ? "" : "none";
 
-  for (const { cosmetic } of order) {
-    if (cosmetic.dontSell && !(cosmetic.earned && owned[cosmetic.id])) continue;
-    ui.storeHolder.appendChild(buildTile(cosmetic, isAccessoryTab));
+  visible(tab).forEach((entry, index) => ui.storeHolder.appendChild(buildTile(entry, index)));
+
+  if (!ui.storeHolder.firstChild) {
+    createElement({
+      class: "storeItem storeEmpty",
+      text: "Nothing in your shop. Choose what shows in Settings, under Shop.",
+      parent: ui.storeHolder,
+    });
   }
 }
 
-function buildTile(cosmetic: Cosmetic, isAccessory: boolean): HTMLElement {
+let pressedAt = 0;
+function equipByPress(id: number, isAccessory: boolean): void {
+  pressedAt = Date.now();
+  equipCosmetic(id, isAccessory);
+}
+function justPressed(): boolean {
+  return Date.now() - pressedAt < 700;
+}
+
+function buildTile(entry: ShopEntry, index: number): HTMLElement {
   const me = state.me!;
+  const cosmetic = entry.item;
+  const isAccessory = entry.kind === 1;
 
   const tile = createElement({
-    id: `storeDisplay${cosmetic.id}`,
+    id: `storeDisplay${index}`,
     class: "storeItem",
     onmouseover: () => showItemInfo(cosmetic, false, true),
     onmouseout: hideItemInfo,
@@ -99,12 +123,17 @@ function buildTile(cosmetic: Cosmetic, isAccessory: boolean): HTMLElement {
     });
     createElement({ tag: "span", class: "itemPrice", text: String(cosmetic.price), parent: tile });
   } else {
+    const target = equipped ? 0 : cosmetic.id;
     createElement({
       class: "joinAlBtn",
       style: "margin-top: 5px",
       text: equipped ? "Unequip" : "Equip",
-
-      onclick: () => equipCosmetic(equipped ? 0 : cosmetic.id, isAccessory),
+      onmousedown: trusted((event: MouseEvent) => {
+        if (event.button === 0) equipByPress(target, isAccessory);
+      }),
+      onclick: () => {
+        if (!justPressed()) equipCosmetic(target, isAccessory);
+      },
       hookTouch: true,
       parent: tile,
     });
@@ -116,18 +145,24 @@ function buildTile(cosmetic: Cosmetic, isAccessory: boolean): HTMLElement {
 function equipOnTap(tile: HTMLElement, id: number, isAccessory: boolean): void {
   let startX: number | undefined;
   let startY = 0;
-  tile.addEventListener("touchstart", (event) => {
+  tile.addEventListener("touchstart", trusted((event: TouchEvent) => {
     startX = event.changedTouches[0].clientX;
     startY = event.changedTouches[0].clientY;
-  }, { passive: true });
-  tile.addEventListener("touchend", (event) => {
+  }), { passive: true });
+  tile.addEventListener("touchend", trusted((event: TouchEvent) => {
     const end = event.changedTouches[0];
     const moved = startX === undefined || Math.abs(end.clientX - startX) > 10 || Math.abs(end.clientY - startY) > 10;
     startX = undefined;
     const me = state.me;
     if (moved || !me || (isAccessory ? me.tailIndex : me.skinIndex) === id) return;
     equipCosmetic(id, isAccessory);
-  }, { passive: true });
+  }), { passive: true });
+  tile.addEventListener("mousedown", trusted((event: MouseEvent) => {
+    const me = state.me;
+    if (event.button !== 0 || (event.target as HTMLElement).classList.contains("joinAlBtn") || !me) return;
+    if ((isAccessory ? me.tailIndex : me.skinIndex) === id) return;
+    equipByPress(id, isAccessory);
+  }));
 }
 
 export function equipCosmetic(id: number, isAccessory: boolean): void {

@@ -1,7 +1,7 @@
 const SANDBOX_HOSTS = ["sandbox.moomoo.io", "sandbox-dev.moomoo.io"];
 const LOCAL_HOSTS = ["localhost", "127.0.0.1"];
 
-const SERVER_LIST_VERSION = "1.28";
+const SERVER_LIST_VERSION = "1.30";
 
 // shard hosts - joshy like new subdomains and i lazy
 const SHARD_HOST = /^(prod|sandbox)-[a-z0-9]+\.moomoo\.io$/;
@@ -64,6 +64,10 @@ export function isLocal(): boolean {
 
 export function isApiLocal(): boolean {
   return isLocal() && queryParam("api") === "local";
+}
+
+export function liveProxyAvailable(): boolean {
+  return localSite() !== null && LOCAL_HOSTS.includes(hostname());
 }
 
 export function restApiEnabled(): boolean {

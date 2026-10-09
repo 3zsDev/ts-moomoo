@@ -62,7 +62,7 @@ function renderOwnTribe(): void {
   const count = members.length / 2;
   createElement({
     class: "allianceItem allianceTitle",
-    text: `[${me.team}] � ${count} member${count === 1 ? "" : "s"}`,
+    text: `[${me.team}] · ${count} member${count === 1 ? "" : "s"}`,
     parent: ui.allianceHolder,
   });
 
@@ -90,18 +90,36 @@ function renderOwnTribe(): void {
 }
 
 function renderTribeList(): void {
+  const myClan = clanOf(state.me);
+
+  const canRecreate = Boolean(myClan) && !state.alliances.some((alliance) => alliance.sid === myClan);
+  if (canRecreate) {
+    const row = createElement({
+      class: "allianceItem",
+      style: `color:${CLAN_COLOR}`,
+      text: `${myClan} · clan`,
+      parent: ui.allianceHolder,
+    });
+    createElement({
+      class: "joinAlBtn",
+      text: "Create",
+      hookTouch: true,
+      parent: row,
+      onclick: () => connection.send(ClientPacket.CreateClan, myClan!),
+    });
+  }
+
   if (state.alliances.length === 0) {
-    createElement({ class: "allianceItem", text: "No Tribes Yet", parent: ui.allianceHolder });
+    if (!canRecreate) createElement({ class: "allianceItem", text: "No Tribes Yet", parent: ui.allianceHolder });
     return;
   }
 
-  const myClan = clanOf(state.me);
   for (const alliance of state.alliances) {
     const clan = clanOf(alliance);
     const row = createElement({
       class: "allianceItem",
       style: `color:${clan ? CLAN_COLOR : "rgba(255,255,255,0.6)"}`,
-      text: alliance.sid + (clan ? " � clan" : ""),
+      text: alliance.sid + (clan ? " · clan" : ""),
       parent: ui.allianceHolder,
     });
 
@@ -161,6 +179,12 @@ export function createAlliance(): void {
   const name = input?.value ?? "";
   if (!name.trim()) return;
   createError = "";
+
+  const myClan = clanOf(state.me);
+  if (myClan && name.trim().toLowerCase() === myClan.toLowerCase()) {
+    connection.send(ClientPacket.CreateClan, name);
+    return;
+  }
 
   void isClanNameReserved(name).then((reserved) => {
     if (!reserved) {

@@ -3,7 +3,7 @@ import { protocol, type ProtocolSource } from "../../config/protocol";
 import { isSandbox } from "../../environment";
 
 const SANDBOX_BUILD = isSandbox();
-const BUILD = SANDBOX_BUILD ? { id: "s16nx6", salt: 3312325388 } : { id: "s16nto", salt: 3836703251 };
+const BUILD = SANDBOX_BUILD ? { id: "s16nz1", salt: 1908827726 } : { id: "s16nz1", salt: 2643987008 };
 
 export let BUILD_ID = BUILD.id;
 export let BUILD_SALT = BUILD.salt;
@@ -17,7 +17,8 @@ interface ProtocolModule {
 }
 
 let moduleMixKey: ProtocolModule["mixKey"] | null = null;
-let protocolLoad: Promise<void> | null = null;
+const protocolLoads = new Map<string, Promise<ProtocolModule | null>>();
+let warnedMissing = false;
 
 function liveProtocolUrl(): string | null {
   for (const script of document.querySelectorAll<HTMLScriptElement>('script[type="importmap"]')) {
@@ -37,29 +38,61 @@ function protocolUrl(source: ProtocolSource): string | null {
   return null;
 }
 
-export function loadProtocol(): Promise<void> {
-  protocolLoad ??= (async () => {
-    const source = protocol.protocolSource;
-    const url = protocolUrl(source);
-    if (!url) {
-      if (source !== "builtin") console.warn(`[protocol] no ${source} protocol module found; using built-in values`);
-      return;
-    }
-    try {
-      const loaded = (await import(/* @vite-ignore */ url)) as Partial<ProtocolModule>;
-      if (typeof loaded.BUILD_ID !== "string" || typeof loaded.BUILD_SALT !== "number" || typeof loaded.mixKey !== "function") {
-        console.warn("[protocol] protocol module has an unexpected shape; using built-in values", { source, url });
-        return;
+function importProtocol(url: string, source: string): Promise<ProtocolModule | null> {
+  let load = protocolLoads.get(url);
+  if (!load) {
+    load = (async () => {
+      try {
+        const loaded = (await import(/* @vite-ignore */ url)) as Partial<ProtocolModule>;
+        if (typeof loaded.BUILD_ID !== "string" || typeof loaded.BUILD_SALT !== "number" || typeof loaded.mixKey !== "function") {
+          console.warn("[protocol] protocol module has an unexpected shape; using built-in values", { source, url });
+          return null;
+        }
+        console.info(`[protocol] using ${source} protocol module`, { buildId: loaded.BUILD_ID });
+        return loaded as ProtocolModule;
+      } catch (error) {
+        console.warn("[protocol] failed to load protocol module; using built-in values", { source, url, error });
+        protocolLoads.delete(url);
+        return null;
       }
-      BUILD_ID = loaded.BUILD_ID;
-      BUILD_SALT = loaded.BUILD_SALT;
-      moduleMixKey = loaded.mixKey;
-      console.info(`[protocol] using ${source} protocol module`, { buildId: BUILD_ID });
-    } catch (error) {
-      console.warn("[protocol] failed to load protocol module; using built-in values", { source, url, error });
-    }
-  })();
-  return protocolLoad;
+    })();
+    protocolLoads.set(url, load);
+  }
+  return load;
+}
+
+function useProtocol(loaded: ProtocolModule | null): void {
+  BUILD_ID = loaded?.BUILD_ID ?? BUILD.id;
+  BUILD_SALT = loaded?.BUILD_SALT ?? BUILD.salt;
+  moduleMixKey = loaded?.mixKey ?? null;
+}
+
+export async function loadProtocol(): Promise<void> {
+  const source = protocol.protocolSource;
+  const url = protocolUrl(source);
+  if (!url && source !== "builtin" && !warnedMissing) {
+    warnedMissing = true;
+    console.warn(`[protocol] no ${source} protocol module found; using built-in values`);
+  }
+  useProtocol(url ? await importProtocol(url, source) : null);
+}
+
+export async function loadLiveProtocol(environment: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/p/live.json?environment=${encodeURIComponent(environment)}`, { cache: "no-store" });
+    const { file } = (await response.json()) as { file?: unknown };
+    if (!response.ok || typeof file !== "string") throw new Error(`lookup answered ${response.status}`);
+    const loaded = await importProtocol(
+      new URL(`/p/${file}?environment=${encodeURIComponent(environment)}`, location.href).toString(),
+      `live ${environment}`,
+    );
+    if (!loaded) return false;
+    useProtocol(loaded);
+    return true;
+  } catch (error) {
+    console.warn("[protocol] couldn't find the live protocol module", { environment, error });
+    return false;
+  }
 }
 
 function rotateLeft(value: number, shift: number): number {
@@ -69,17 +102,18 @@ function rotateLeft(value: number, shift: number): number {
 function mixProductionByte(salt: number, index: number): number {
   let value = Math.imul(index + 1, 0x9e3779b1) ^ salt;
 
-  value = rotateLeft(value, 31);
-  value ^= 0x4546a6c3;
-  value ^= value << 1;
-  value = (value + 0xfa2c5de4) | 0;
-  value = rotateLeft(value, 9);
-  value = (value + 0x599d3f8d) | 0;
-  value = Math.imul(value, 0x5641c747);
-  value ^= 0x1b45a0c9;
-  value ^= value >>> 26;
-  value = (value + 0x7c7ab76e) | 0;
-  value = Math.imul(value, 0xe94e39eb);
+  value ^= value << 10;
+  value ^= value >>> 30;
+  value ^= 0xcc34b9fe;
+  value ^= value >>> 27;
+  value ^= value << 7;
+  value = rotateLeft(value, 11);
+  value = (value + 0x90a2ad19) | 0;
+  value = Math.imul(value, 0x3e28d5bf);
+  value = rotateLeft(value, 3);
+  value = (value + 0xbdfe6241) | 0;
+  value ^= 0x4dd28fb9;
+  value = (value + 0xc48ab3b2) | 0;
 
   return (value >>> 11) & 0xff;
 }
@@ -87,20 +121,15 @@ function mixProductionByte(salt: number, index: number): number {
 function mixSandboxByte(salt: number, index: number): number {
   let value = Math.imul(index + 1, 0x9e3779b1) ^ salt;
 
-  value = Math.imul(value, 0xa1c2b131);
-  value ^= 0x9ade9f1c;
-  value = rotateLeft(value, 18);
-  value = (value + 0x6d942d68) | 0;
-  value ^= 0xa863a7b9;
-  value = Math.imul(value, 0xe3ddf835);
-  value ^= value << 28;
-  value = Math.imul(value, 0x97b513f3);
-  value = (value + 0xc7c2bc9b) | 0;
-  value ^= value >>> 24;
-  value = (value + 0x1a5ee6bf) | 0;
-  value = rotateLeft(value, 2);
-  value = (value + 0x5be3a83b) | 0;
-  value ^= 0x9921b73d;
+  value = (value + 0xbf73ef68) | 0;
+  value ^= value >>> 16;
+  value = rotateLeft(value, 19);
+  value ^= value >>> 19;
+  value = Math.imul(value, 0x4a9ae0ef);
+  value ^= value >>> 16;
+  value = Math.imul(value, 0xda6bbd9b);
+  value = rotateLeft(value, 10);
+  value ^= 0xec01eaec;
 
   return (value >>> 11) & 0xff;
 }

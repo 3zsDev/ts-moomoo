@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { fail, isInternal, ok, RateLimiter } from "../lib/http.mjs";
 import { bump } from "../lib/periods.mjs";
-import { isStaff, signedIn } from "./accounts.mjs";
+import { clanOf, isStaff, recordLifeLook, signedIn } from "./accounts.mjs";
 import { applyVerdict } from "./mod.mjs";
 
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET ?? "";
@@ -124,7 +124,7 @@ export const gameRoutes = {
     subject.session = { at: Date.now(), server: String(body.server ?? ""), ip };
     ctx.store.save();
 
-    const clan = user?.clan ? ctx.store.clans[user.clan] : null;
+    const clan = user ? clanOf(ctx.store, user) : null;
     return ok({
       ok: true,
       did,
@@ -149,6 +149,7 @@ export const gameRoutes = {
     for (const [key, value] of Object.entries(body.animalKills ?? {})) {
       if (ANIMAL_KEYS.has(key)) stats.animalKills[key] = (stats.animalKills[key] ?? 0) + count(value);
     }
+    recordLifeLook(user, body, score > 0 && score >= stats.bestScore);
     stats.bestScore = Math.max(stats.bestScore, score);
     stats.maxKills = Math.max(stats.maxKills, kills);
     stats.lives += 1;

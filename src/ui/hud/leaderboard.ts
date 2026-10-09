@@ -1,4 +1,6 @@
+import { state } from "../../game/state";
 import { imageUrl } from "../../render/sprites";
+import { ownLeaderboardName } from "../anonMode";
 import { friends, isStaff } from "../../net/api";
 import { createElement, removeAllChildren } from "../../utils/dom";
 import { kFormat } from "../../utils/math";
@@ -26,6 +28,7 @@ export function formatClanTag(tribe: string | null | undefined, clan: string | n
 }
 
 let lastRows: (string | number)[] = [];
+let lastUpdate: Parameters<typeof refreshLeaderboard> | null = null;
 
 export function leaderboardPlayers(): (string | number)[] {
   return lastRows;
@@ -58,6 +61,10 @@ function nameParts(sid: number, name: string, clan: string | undefined, tribe: s
   return [...parts, nameSpan];
 }
 
+export function redrawLeaderboard(): void {
+  if (lastUpdate?.[0].length) refreshLeaderboard(...lastUpdate);
+}
+
 export function refreshLeaderboard(
   rows: (string | number)[],
   roles?: (string | number)[],
@@ -67,6 +74,8 @@ export function refreshLeaderboard(
   tribeTags?: (string | number)[],
 ): void {
   lastRows = rows;
+  lastUpdate = [rows, roles, dead, crabKillers, clanTags, tribeTags];
+  const ownName = ownLeaderboardName();
   const roleOf = pairs<number>(roles);
   const clanOf = pairs<string>(clanTags);
   const tribeOf = pairs<string>(tribeTags);
@@ -84,7 +93,7 @@ export function refreshLeaderboard(
 
   for (let i = 0; i < rows.length; i += 3) {
     const sid = rows[i] as number;
-    const name = rows[i + 1] !== "" ? String(rows[i + 1] ?? "unknown") : "unknown";
+    const name = sid === me && state.me && ownName ? ownName : rows[i + 1] !== "" ? String(rows[i + 1] ?? "unknown") : "unknown";
     const score = rows[i + 2] as number;
     const signedIn = sid in roleOf;
     const role = roleOf[sid] || 0;

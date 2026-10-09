@@ -1,4 +1,5 @@
 import { loadSetting, saveSetting } from "../utils/storage";
+import { isSandbox, liveProxyAvailable } from "../environment";
 import { discoverLocalServers } from "./localServers";
 
 export interface RegionInfo {
@@ -38,6 +39,7 @@ export interface ServerEntry {
   sandbox?: boolean;
   httpUrl?: string;
   wsUrl?: string;
+  liveHost?: string;
 }
 
 export interface ServerAddress {
@@ -115,6 +117,7 @@ export class ServerBrowser {
   }
 
   public address(server: ServerEntry): string {
+    if (server.liveHost) return server.liveHost;
     if (server.wsUrl) return "localhost";
     return String(server.region) === "0" ? location.hostname : `${server.key}.${server.region}.${this.baseHost}`;
   }
@@ -196,7 +199,12 @@ export class ServerBrowser {
   }
 
   public isLocalSelected(): boolean {
-    return Boolean(this.selected()?.wsUrl);
+    const selected = this.selected();
+    return Boolean(selected?.wsUrl && !selected.liveHost);
+  }
+
+  public isLiveSelected(): boolean {
+    return Boolean(this.selected()?.liveHost);
   }
 
   private fromUrl(): Selection | null {
@@ -336,7 +344,6 @@ export class ServerBrowser {
     }
     if (!this.entries.length) return Promise.resolve();
 
-    // a server named in the url is shown straight away; the rest waits for pings to pick a region
     const fromUrl = !this.selection && this.fromUrl();
     if (fromUrl && fromUrl.name && this.find(fromUrl.region, fromUrl.name)) {
       this.reselect(true);
@@ -354,15 +361,35 @@ export class ServerBrowser {
   }
 
   public async load(listUrl: string): Promise<void> {
-    const [remote, local] = await Promise.all([
+    const liveApi = isSandbox() ? "https://api-sandbox2.moomoo.io" : "https://api-prod2.moomoo.io";
+    const [remote, live, local] = await Promise.all([
       fetch(listUrl)
         .then((response) => response.json() as Promise<ServerEntry[]>)
         .catch(() => null),
+      liveProxyAvailable()
+        ? fetch(`${liveApi}/servers?v=1.30`, { signal: AbortSignal.timeout(8000) })
+          .then((response) => response.json() as Promise<ServerEntry[]>)
+          .catch(() => null)
+        : Promise.resolve(null),
       discoverLocalServers(),
     ]);
-    if (!Array.isArray(remote) && !local.length) throw new Error("could not load the server list");
+    if (!Array.isArray(remote) && !Array.isArray(live) && !local.length) {
+      throw new Error("could not load the server list");
+    }
 
-    await this.setEntries([...(Array.isArray(remote) ? remote : []), ...local]);
+    const liveEntries = (Array.isArray(live) ? live : []).flatMap((entry) => {
+      const host = `${entry.key}.${entry.region}.${this.baseHost}`;
+      if (!/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+moomoo\.io$/i.test(host)) return [];
+      const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+      const liveEnvironment = isSandbox() ? "sandbox" : "prod";
+      return [{
+        ...entry,
+        liveHost: host,
+        wsUrl: `${scheme}//${location.host}/live?host=${encodeURIComponent(host)}&environment=${liveEnvironment}`,
+      }];
+    });
+
+    await this.setEntries([...(Array.isArray(remote) ? remote : []), ...liveEntries, ...local]);
     if (!this.entries.length) throw new Error("no servers available");
   }
 

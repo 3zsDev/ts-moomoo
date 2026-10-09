@@ -29,6 +29,7 @@ export type PlayerInitData = [
 export interface PlayerPowers {
   god: boolean;
   invisible: boolean;
+  noclip: boolean;
   damage: number;
   speed: number;
   health: number;
@@ -124,7 +125,7 @@ export class Player implements Damageable, Interpolated {
 
   public noMovTimer = 0;
   public stats: LifeStats = emptyLifeStats();
-  public readonly powers: PlayerPowers = { god: false, invisible: false, damage: 1, speed: 1, health: 1, size: 1 };
+  public readonly powers: PlayerPowers = { god: false, invisible: false, noclip: false, damage: 1, speed: 1, health: 1, size: 1 };
   private hitBuffTimer = 0;
   private hitBuffMult = 1;
   private killBuffTimer = 0;
@@ -385,6 +386,7 @@ export class Player implements Damageable, Interpolated {
       if (this.xVel) this.x += this.xVel * delta * stepFraction;
       if (this.yVel) this.y += this.yVel * delta * stepFraction;
 
+      if (this.powers.noclip) continue;
       for (const cell of this.objectManager.getGridArrays(this.x, this.y, this.scale)) {
         for (const obj of cell) {
           if (!obj.active || alreadyHit[obj.sid]) continue;
@@ -400,7 +402,7 @@ export class Player implements Damageable, Interpolated {
     const selfIndex = this.players.indexOf(this);
     for (let i = selfIndex + 1; i < this.players.length; ++i) {
       const other = this.players[i];
-      if (other !== this && other.alive) this.objectManager.checkCollision(this, other);
+      if (other !== this && other.alive && !this.powers.noclip && !other.powers.noclip) this.objectManager.checkCollision(this, other);
     }
   }
 

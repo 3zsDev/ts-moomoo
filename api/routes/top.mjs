@@ -1,4 +1,5 @@
 import { ok } from "../lib/http.mjs";
+import { liveGet, livePost } from "../lib/mirror.mjs";
 import { read } from "../lib/periods.mjs";
 import { isStaff, signedIn } from "./accounts.mjs";
 
@@ -43,10 +44,16 @@ function spanOf(value) {
 }
 
 export const topRoutes = {
-  "GET /top": async (ctx, { query }) => ok(board(ctx.store, spanOf(query.get("span")), false)),
+  "GET /top": async (ctx, { query }) => {
+    const span = spanOf(query.get("span"));
+    const live = await liveGet(`/top?span=${span}`);
+    return ok(live ?? board(ctx.store, span, false));
+  },
 
   "POST /top": async (ctx, { body }) => {
     const user = await signedIn(ctx, body.auth);
-    return ok(board(ctx.store, spanOf(body.span), isStaff(user)));
+    const span = spanOf(body.span);
+    const live = await livePost("/top", { auth: body.auth, span });
+    return ok(live ?? board(ctx.store, span, isStaff(user)));
   },
 };

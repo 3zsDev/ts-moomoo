@@ -4,6 +4,7 @@ import { serverConfig } from "./config";
 import { forceSandbox } from "./shared";
 import { admit, fetchReserved, internalHeaders } from "./net/api";
 import { Client } from "./net/Client";
+import { proxyLiveSocket, serveLiveProtocol } from "./net/liveSocketProxy";
 import { serveStatic } from "./net/static";
 import { attachWebSocketServer } from "./net/websocket";
 import { createSimulation } from "./sim";
@@ -20,7 +21,7 @@ const localSite = JSON.stringify({
 }).replace(/[<>]/g, "");
 const INJECT_HEAD = serverConfig.wsOnly ? "" : `<script>window.__MOOMOO_LOCAL__=${localSite};</script>`;
 
-const API_ROUTE = /^\/(join|account|account\/socials|account\/prefs|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow|discord\/link)$/;
+const API_ROUTE = /^\/(join|account|account\/socials|account\/prefs|account\/look|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow|discord\/link)$/;
 const MODERATION_ACTIONS = new Set(["kick", "ban", "shadow", "clear"]);
 
 function selfServerList(): unknown[] {
@@ -79,7 +80,6 @@ function remoteAddress(req: IncomingMessage): string {
   return String(req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
 }
 
-// the api calling in: the shared key, or this machine when there isn't one
 function isInternal(req: IncomingMessage): boolean {
   if (serverConfig.internalKey) return req.headers["x-internal-key"] === serverConfig.internalKey;
   const address = remoteAddress(req);
@@ -163,6 +163,8 @@ const http = createServer((req, res) => {
     return;
   }
 
+  if (!serverConfig.wsOnly && serveLiveProtocol(req, res)) return;
+
   if (path === "/servers") {
     sendJson(res, selfServerList());
     return;
@@ -215,12 +217,56 @@ const http = createServer((req, res) => {
   serveStatic(res, serverConfig.publicDir, path, INJECT_HEAD);
 });
 
+const openSockets = new Map<string, number>();
+const recentJoins = new Map<string, number[]>();
+
+function isLoopback(ip: string): boolean {
+  return ip === "127.0.0.1" || ip === "::1";
+}
+
+function swarmCheck(ip: string): string | null {
+  if (isLoopback(ip)) return null;
+  const now = Date.now();
+  const joins = (recentJoins.get(ip) ?? []).filter((at) => now - at < 60000);
+  joins.push(now);
+  recentJoins.set(ip, joins);
+  if (recentJoins.size > 10000) recentJoins.clear();
+
+  if ((openSockets.get(ip) ?? 0) >= serverConfig.maxSocketsPerIp) return "Too many connections from your network";
+  if (joins.length > serverConfig.maxJoinsPerMinute) return "Too many attempts - try again soon";
+  return null;
+}
+
 attachWebSocketServer(http, async (socket) => {
   const ip = socket.remoteAddress.replace(/^::ffff:/, "");
+  const refused = swarmCheck(ip);
+  if (refused) {
+    game.turnAway(new Client(socket), refused);
+    return;
+  }
+
+  openSockets.set(ip, (openSockets.get(ip) ?? 0) + 1);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    const left = (openSockets.get(ip) ?? 1) - 1;
+    if (left > 0) openSockets.set(ip, left);
+    else openSockets.delete(ip);
+  };
+
   const admission = await admit(socket.url.searchParams.get("token"), ip);
-  if (socket.closed) return;
+  if (socket.closed) {
+    release();
+    return;
+  }
 
   const client = new Client(socket);
+  const onclose = socket.onclose;
+  socket.onclose = () => {
+    release();
+    onclose?.();
+  };
   if (!admission.ok) {
     game.turnAway(client, admission.reason);
     return;
@@ -229,7 +275,7 @@ attachWebSocketServer(http, async (socket) => {
 
   const who = admission.session.account?.name ?? admission.session.account?.id ?? "guest";
   console.log(`[join] ${client.remoteAddress} ${who} (${game.playerCount} online)`);
-});
+}, proxyLiveSocket);
 
 async function heartbeat(): Promise<void> {
   if (serverConfig.wsOnly || !serverConfig.apiEnabled) return;

@@ -5,12 +5,14 @@ import { createHandlers, markPingSent } from "../net/handlers";
 import { auth, joinTicket } from "../net/api";
 import { trackGameStart } from "../net/api/auth";
 import { getCaptchaToken, resetTurnstile } from "../net/turnstile";
-import { BUILD_ID, ClientPacket, loadProtocol } from "../net/protocol";
+import { BUILD_ID, ClientPacket, loadLiveProtocol, loadProtocol } from "../net/protocol";
 import { securityFlags, untrustedEventCount } from "../security";
+import { attack } from "../input/outbound";
 import { ServerBrowser } from "../net/ServerBrowser";
 import { clearTelegraphs } from "../render/layers/telegraphs";
 import { loadSetting, saveSetting } from "../utils/storage";
 import { closeAlliance, refreshNotifications } from "../ui/alliance";
+import { joinAnonFlag, onGameSetup, onLeaveGame } from "../ui/anonMode";
 import { ui } from "../ui/elements";
 import { closeChat } from "../ui/hud";
 import { onGameStart, onPlayerDeath } from "../ui/lifecycle";
@@ -60,18 +62,24 @@ export async function connectToServer(): Promise<void> {
   if (!address) return;
 
   let url = address.wsUrl ?? (isLocal() ? localSocketUrl(address.host, address.port) : `wss://${address.host}`);
+  const live = Boolean(address.wsUrl && new URL(address.wsUrl).pathname === "/live");
+
+  if (live && !(await loadLiveProtocol(new URL(url).searchParams.get("environment") ?? "prod"))) {
+    returnToMenu("Couldn't load the live game's protocol - try again");
+    return;
+  }
 
   // 1.9 now requires token
   let token: string | null;
   try {
-    token = await joinTicket(address.host, getCaptchaToken());
+    token = await joinTicket(address.host, getCaptchaToken(), live);
   } catch (error) {
     returnToMenu(error instanceof Error ? error.message : "disconnected");
     return;
   }
   const socketUrl = new URL(url);
-  if (!isLocal()) {
-    await loadProtocol();
+  if (!isLocal() || live) {
+    if (!live) await loadProtocol();
     socketUrl.searchParams.set("b", BUILD_ID);
   }
   if (token) socketUrl.searchParams.set("token", token);
@@ -116,6 +124,7 @@ export function joinGame(): void {
     name: getPlayerName(),
     moofoll: followBonus,
     skin: selectedSkinColor,
+    anon: joinAnonFlag(),
   });
 }
 
@@ -138,7 +147,10 @@ function stopTelemetry(): void {
 }
 
 function onSetupGame(): void {
+  attack.held = 0;
+  attack.mouse = attack.key = false;
   startTelemetry();
+  onGameSetup();
   hideMenu();
   ui.gameUI.style.display = "block";
   ui.diedText.style.display = "none";
@@ -183,6 +195,7 @@ export function returnToMenu(reason: string): void {
 export function leaveSession(): void {
   joined = false;
   reachedServer = false;
+  onLeaveGame();
   stopTelemetry();
   stopPingLoop();
   connection.close();

@@ -1,11 +1,26 @@
 import nipplejs from "nipplejs";
 import { state } from "../game/state";
 import { findById } from "../utils/dom";
+import { loadBool, saveBool } from "../utils/storage";
 import { fixTo } from "../utils/math";
 import { setAimAngle, touch } from "./aim";
 import { setUsingTouch } from "./inputMode";
 import { attack, sendAttackState, sendMoveDirection } from "./outbound";
 
+
+let aimFollowsMove = loadBool("aim_follows_move", true);
+
+export function bindAimFollowsSetting(isTouchDevice: boolean): void {
+  const toggle = findById<HTMLInputElement>("aimFollows");
+  const row = findById("aimFollowsRow");
+  if (!toggle || !row) return;
+  row.style.display = isTouchDevice ? "" : "none";
+  toggle.checked = aimFollowsMove;
+  toggle.onchange = () => {
+    aimFollowsMove = toggle.checked;
+    saveBool("aim_follows_move", aimFollowsMove);
+  };
+}
 
 export const touchControls = {
   startMoving(): void {
@@ -22,7 +37,7 @@ export const touchControls = {
     touch.moveAngle = fixTo(angle, 2);
     sendMoveDirection();
 
-    if (!touch.aiming) setAimAngle(angle);
+    if (!touch.aiming && aimFollowsMove) setAimAngle(angle);
   },
 
   startAttacking(): void {

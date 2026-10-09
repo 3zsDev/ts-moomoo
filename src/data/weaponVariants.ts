@@ -14,7 +14,7 @@ export const weaponVariants: WeaponVariant[] = [
   { id: 1, src: "_g", xp: 3000, val: 1.1 },
   { id: 2, src: "_d", xp: 7000, val: 1.18 },
   { id: 3, src: "_r", xp: 12000, val: 1.18, poison: true },
-  { id: 4, src: "_e", xp: 20000, val: 1.18, lifesteal: 0.15, membersOnly: true },
+  { id: 4, src: "_e", xp: 30000, val: 1.18, poison: true, lifesteal: 0.15, membersOnly: true },
 ];
 
 interface VariantHolder {

@@ -1,7 +1,7 @@
 import { config } from "../config";
 import { state } from "../game/state";
 import { byId } from "../utils/dom";
-import { renderCircle } from "./shapes";
+import { renderCircle } from "./canvas/shapes";
 
 export const minimapCanvas = byId<HTMLCanvasElement>("mapDisplay", "canvas");
 const ctx = minimapCanvas.getContext("2d")!;

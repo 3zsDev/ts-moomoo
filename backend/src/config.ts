@@ -26,6 +26,8 @@ export const serverConfig = {
   peerUrl: process.env.GAME_PEER_URL ?? "",
   heartbeatInterval: 5000,
   maxPacketsPerSecond: 120,
+  maxSocketsPerIp: Number(process.env.GAME_MAX_PER_IP ?? 4),
+  maxJoinsPerMinute: Number(process.env.GAME_JOINS_PER_MINUTE ?? 12),
   maxPacketBytes: 4096,
   animals: [
     { type: 0, count: 14, band: "any" },      // cow

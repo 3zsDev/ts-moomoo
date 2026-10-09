@@ -2,7 +2,9 @@ import { isDev, isSandbox, socialEnabled } from "../../environment";
 import { account, authedPost, fetchProfile, friends, isStaff, postWithAuth, type Profile, type Socials } from "../../net/api";
 import { byId, createElement, removeAllChildren } from "../../utils/dom";
 import { kFormat } from "../../utils/math";
+import { openSettingsPopup } from "../menu/settingsPopup";
 import { currentView } from "../menu/views";
+import { awaitPlayerProfile } from "../../net/handlers/staff";
 import { isConnected, mySid, onPlayerStats, requestPlayerStats } from "../netBridge";
 import { closeClanCard, openClanByName } from "./clan";
 import { copyLinkButton } from "./shareLink";
@@ -71,11 +73,11 @@ function liveValue(key: keyof LiveStats): number {
 const BOSSES = ["crab_king", "moostafa", "moofie"];
 const ANIMAL_NAMES: Record<string, string> = {
   cow: "Cows", pig: "Pigs", sheep: "Sheep", bull: "Bulls", bully: "Bullies", wolf: "Wolves", duck: "Ducks",
-  boar: "Boars", yeti: "Yetis", treasure: "Treasure", crab_king: "Crab King", moostafa: "MOOSTAFA", moofie: "MOOFIE",
+  boar: "Boars", yeti: "Yetis", crab_king: "Crab King", moostafa: "MOOSTAFA", moofie: "MOOFIE",
 };
 
 function killKeys(kills: Record<string, number> | undefined, bosses: boolean): string[] {
-  return Object.keys(kills ?? {}).filter((key) => BOSSES.includes(key) === bosses && kills![key] > 0);
+  return Object.keys(kills ?? {}).filter((key) => key !== "treasure" && BOSSES.includes(key) === bosses && kills![key] > 0);
 }
 
 function killTotal(kills: Record<string, number> | undefined, bosses: boolean): number {
@@ -359,6 +361,15 @@ function fillProfile(profile: Profile): void {
   const own = Boolean(account.name) && profile.name === account.name;
   card.note.textContent = own && !isSandbox() ? unsavedStatsNote() : "";
   renderSocials(profile.socials ?? {}, own);
+  if (own && !isSandbox() && !profile.anon) {
+    createElement({
+      tag: "a",
+      class: "profileSocialEdit profileLookEdit",
+      text: "Edit look",
+      parent: card.socials,
+      onclick: () => openSettingsPopup("look"),
+    });
+  }
 
   removeAllChildren(card.actions);
   card.status.textContent = "";
@@ -370,7 +381,7 @@ function fillProfile(profile: Profile): void {
   }
 
   const myClan = account.clan;
-  if (socialEnabled() && myClan && (myClan.role === "owner" || myClan.role === "officer") && !own && !profile.clan) {
+  if (socialEnabled() && myClan && (myClan.role === "owner" || myClan.role === "officer") && !own && !profile.clan && !profile.anon) {
     const invite = createElement({
       class: "friendAction go",
       text: "Invite to clan",
@@ -388,8 +399,8 @@ function fillProfile(profile: Profile): void {
     });
   }
 
-  copyLinkButton(card.actions, `/player/${encodeURIComponent(profile.name)}`, card.status);
-  if (isStaff() && !own) {
+  if (!profile.anon) copyLinkButton(card.actions, `/player/${encodeURIComponent(profile.name)}`, card.status);
+  if (isStaff() && !own && !profile.anon) {
     renderStaffPanel(card.actions, card.status, { name: profile.name, role: profile.role ?? undefined });
   }
   card.root.style.display = "block";
@@ -402,7 +413,10 @@ export function openProfile(name: string): void {
   const sid = name === account.name ? mySid() : knownSids[name];
   subscribeLive(sid == null ? -1 : sid);
 
-  fetchProfile(name)
+  const lookup = sid != null && isConnected()
+    ? awaitPlayerProfile<Profile>(sid, () => (/^Anon#/.test(name) ? Promise.resolve(null) : fetchProfile(name)))
+    : fetchProfile(name);
+  lookup
     .then((profile) => {
       if (!profile) {
         card.status.textContent = "No profile found";
@@ -466,7 +480,6 @@ export function receivePlayerStats(
   const previous = live;
   live = { kills, wood, food, stone, gold, damage, animalDamage, healing, animals, bosses, score: score || 0 };
 
-  // totals going down means a new life: refetch the stored profile
   const total = (stats: LiveStats) =>
     (Object.keys(stats) as (keyof LiveStats)[]).reduce((sum, key) => (key === "score" ? sum : sum + stats[key]), 0);
   if (previous && total(live) < total(previous)) {

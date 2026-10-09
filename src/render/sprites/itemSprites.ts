@@ -2,7 +2,7 @@ import { outlineWidth, paletteColors } from "../../config";
 import { itemData, items, type Item } from "../../data/items";
 import type { GameObject } from "../../entities/GameObject";
 import { randInt, TAU } from "../../utils/math";
-import { renderCircle, renderLeaf, renderRect, renderRectCircle, renderStar, renderTriangle } from "../shapes";
+import { renderCircle, renderLeaf, renderRect, renderRectCircle, renderStar, renderTriangle } from "../canvas/shapes";
 
 const cache: HTMLCanvasElement[] = [];
 

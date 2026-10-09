@@ -1,5 +1,5 @@
 import { outlineWidth, paletteColors } from "../config";
-import { clearTextLayer, ctx } from "./canvas";
+import { clearTextLayer, endFrame, painter } from "./surface";
 import { camera, lockCameraToPlayer, updateCamera } from "./camera";
 import { interpolateEntities } from "./interpolation";
 import { renderGrid, renderBackground, renderMapBorders, renderWaterBodies } from "./layers/ground";
@@ -19,20 +19,20 @@ export function updateGame(delta: number): void {
   renderWaterBodies(delta);
   renderGrid();
 
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = paletteColors.outline;
+  painter.globalAlpha = 1;
+  painter.strokeStyle = paletteColors.outline;
 
   collectGameObjects();
   renderGameObjects(-1);
-  renderTelegraphs(ctx, camera.left, camera.top);
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = outlineWidth;
-  ctx.strokeStyle = paletteColors.outline;
+  renderTelegraphs(painter, camera.left, camera.top);
+  painter.globalAlpha = 1;
+  painter.lineWidth = outlineWidth;
+  painter.strokeStyle = paletteColors.outline;
   renderProjectiles(0);
   renderPlayers(delta, 0);
   renderAI(delta);
 
-  ctx.globalAlpha = 1;
+  painter.globalAlpha = 1;
   renderGameObjects(0);
   renderProjectiles(1);
   renderGameObjects(1);
@@ -43,5 +43,6 @@ export function updateGame(delta: number): void {
   renderMapBorders();
   renderOverlays(delta);
 
+  endFrame();
   renderMinimap(delta);
 }

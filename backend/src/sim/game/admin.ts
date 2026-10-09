@@ -34,6 +34,12 @@ function teleport(player: Player, x: number, y: number): void {
   player.yVel = 0;
 }
 
+const MOD_COMMANDS = new Set(["noclip"]);
+
+export function canRunAdminCommand(role: string | null | undefined, command: MsgPackValue | undefined): boolean {
+  return role === "admin" || (role === "mod" && MOD_COMMANDS.has(String(command ?? "")));
+}
+
 export function runAdminCommand(host: AdminHost, player: Player, args: MsgPackValue[]): void {
   const command = String(args[0] ?? "");
   const on = !!finite(args[1]);
@@ -52,10 +58,8 @@ export function runAdminCommand(host: AdminHost, player: Player, args: MsgPackVa
       host.refreshPlayer(player);
       return;
 
-    case "godlike":
-      player.powers.god = on;
-      player.aura = on;
-      host.refreshPlayer(player);
+    case "noclip":
+      player.powers.noclip = on;
       return;
 
     case "boss":

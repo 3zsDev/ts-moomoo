@@ -1,5 +1,5 @@
 import { state } from "../game/state";
-import { viewport } from "../render/canvas";
+import { viewport } from "../render/surface";
 import { fixTo } from "../utils/math";
 
 export const mouse = { x: 0, y: 0 };

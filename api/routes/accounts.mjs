@@ -2,6 +2,7 @@ import { isListedAdmin, readAuth } from "../lib/auth.mjs";
 import { censor, isRude, sanitize } from "../lib/filter.mjs";
 import { fail, ok, RateLimiter } from "../lib/http.mjs";
 import { read } from "../lib/periods.mjs";
+import { forward, liveAccepts, liveGet, liveProfileOf, livePost, syncAccount } from "../lib/mirror.mjs";
 import { newUser } from "../lib/store.mjs";
 
 const NAME = /^[\w:()/? -]{1,15}$/;
@@ -15,6 +16,44 @@ const STAT_KEYS = [
 ];
 
 const lookups = new RateLimiter(60, 60 * 1000);
+const SKIN_COLORS = 10;
+
+function lookOf(user) {
+  user.look ??= { owned: { hats: [0], accs: [0], weapons: { 0: 0 } }, best: null, chosen: null };
+  return user.look;
+}
+
+const count = (value) => (Number.isInteger(value) && value >= 0 ? value : null);
+
+export function recordLifeLook(user, life, wasBest) {
+  const look = lookOf(user);
+  const add = (list, ids) => {
+    for (const id of Array.isArray(ids) ? ids : []) if (count(id) !== null && !list.includes(id)) list.push(id);
+  };
+  add(look.owned.hats, life.owned?.hats);
+  add(look.owned.accs, life.owned?.accs);
+  for (const [id, variant] of Object.entries(life.owned?.weapons ?? {})) {
+    if (count(Number(id)) === null || count(variant) === null) continue;
+    look.owned.weapons[id] = Math.max(look.owned.weapons[id] ?? 0, variant);
+  }
+  if (wasBest && life.look && typeof life.look === "object") look.best = cleanLook(life.look);
+}
+
+function cleanLook(raw) {
+  const out = {};
+  for (const key of ["hat", "acc", "weapon", "variant", "color"]) out[key] = count(raw?.[key]) ?? 0;
+  return out;
+}
+
+function earned(owned, look) {
+  return (
+    owned.hats.includes(look.hat) &&
+    owned.accs.includes(look.acc) &&
+    owned.weapons[look.weapon] !== undefined &&
+    look.variant <= owned.weapons[look.weapon] &&
+    look.color < SKIN_COLORS
+  );
+}
 
 export async function signedIn(ctx, auth) {
   const identity = await readAuth(auth);
@@ -28,9 +67,28 @@ export async function signedIn(ctx, auth) {
   }
   if (isListedAdmin(identity) && user.role !== "admin") {
     user.role = "admin";
+    user.roleLocal = true;
     ctx.store.save();
   }
+  await syncAccount(ctx.store, user, auth);
   return user;
+}
+
+export function viaLive(path, handler) {
+  return async (ctx, request) => {
+    const auth = request.body?.auth;
+    const user = await signedIn(ctx, auth);
+    if (!user || !liveAccepts(auth)) return handler(ctx, request);
+    const answer = await forward(path, request.body);
+    if (user.live) user.live.at = 0;
+    return answer;
+  };
+}
+
+export function clanOf(store, user) {
+  const clan = user.clan ? store.clans[user.clan] : null;
+  if (clan) return { name: clan.name, role: clan.members[user.id]?.role ?? "member" };
+  return user.liveClan ?? null;
 }
 
 export function isStaff(user) {
@@ -65,9 +123,10 @@ function clanNotes(store, user) {
 }
 
 export function profileView(store, user) {
-  const clan = user.clan ? store.clans[user.clan] : null;
+  const clan = clanOf(store, user);
   const stats = {};
   for (const key of STAT_KEYS) stats[key] = user.stats[key];
+  const live = liveProfileOf(user);
 
   return {
     id: user.id,
@@ -82,6 +141,9 @@ export function profileView(store, user) {
       month: read(user.periods, "month"),
     },
     socials: user.socials,
+    gear: user.look?.chosen ?? user.look?.best ?? undefined,
+    ...(live ?? {}),
+    ...(user.look?.chosen ? { gear: user.look.chosen } : {}),
   };
 }
 
@@ -90,14 +152,27 @@ export const accountRoutes = {
     const user = await signedIn(ctx, body.auth);
     if (!user) return fail(401, "auth");
 
-    const clan = user.clan ? ctx.store.clans[user.clan] : null;
     return ok({
       name: user.name ?? undefined,
       role: user.role,
-      clan: clan ? { name: clan.name, role: clan.members[user.id]?.role ?? "member" } : undefined,
+      clan: clanOf(ctx.store, user) ?? undefined,
       clanNotes: clanNotes(ctx.store, user),
       prefs: prefsOf(user),
     });
+  },
+
+  "POST /account/look": async (ctx, { body }) => {
+    const user = await signedIn(ctx, body.auth);
+    if (!user) return fail(401, "auth");
+
+    const look = lookOf(user);
+    if (body.look) {
+      const picked = cleanLook(body.look);
+      if (!earned(look.owned, picked)) return fail(400, "not earned");
+      look.chosen = picked;
+      ctx.store.save();
+    }
+    return ok({ options: look.owned, look: look.chosen, best: look.best });
   },
 
   "POST /account/prefs": async (ctx, { body }) => {
@@ -115,7 +190,9 @@ export const accountRoutes = {
 
   "GET /name-check": async (ctx, { query, ip }) => {
     if (!lookups.allow(ip)) return fail(429, "slow down");
-    return ok({ reserved: Boolean(ctx.store.userByName(query.get("name"))) });
+    if (ctx.store.userByName(query.get("name"))) return ok({ reserved: true });
+    const live = await liveGet(`/name-check?name=${encodeURIComponent(query.get("name") ?? "")}`);
+    return ok({ reserved: live?.reserved === true });
   },
 
   "POST /name": async (ctx, { body }) => {
@@ -136,8 +213,9 @@ export const accountRoutes = {
   "GET /profile": async (ctx, { query, ip }) => {
     if (!lookups.allow(ip)) return fail(429, "slow down");
     const user = ctx.store.userByName(query.get("name"));
-    if (!user) return fail(404, "not found");
-    return ok(profileView(ctx.store, user));
+    if (user) return ok(profileView(ctx.store, user));
+    const live = await liveGet(`/profile?name=${encodeURIComponent(query.get("name") ?? "")}`);
+    return live ? ok(live) : fail(404, "not found");
   },
 
   "POST /account/socials": async (ctx, { body }) => {
@@ -162,6 +240,11 @@ export const accountRoutes = {
     const ids = Array.isArray(body.ids) ? body.ids.slice(0, 200) : [];
     const names = {};
     for (const id of ids) names[String(id)] = ctx.store.users[String(id)]?.name ?? null;
+    const missing = Object.keys(names).filter((id) => names[id] === null);
+    if (missing.length) {
+      const live = await livePost("/names-for", { ids: missing });
+      for (const id of missing) if (typeof live?.names?.[id] === "string") names[id] = live.names[id];
+    }
     return ok({ names });
   },
 
@@ -181,3 +264,7 @@ export const accountRoutes = {
     return ok({ silent: user.verdict?.level === "shadow" });
   },
 };
+
+for (const path of ["/name", "/account/prefs", "/account/socials", "/account/look", "/friends/allow"]) {
+  accountRoutes[`POST ${path}`] = viaLive(path, accountRoutes[`POST ${path}`]);
+}

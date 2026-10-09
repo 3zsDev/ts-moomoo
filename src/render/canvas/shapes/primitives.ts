@@ -1,4 +1,4 @@
-import { TAU } from "../../utils/math";
+import { TAU } from "../../../utils/math";
 
 export function renderCircle(
   ctx: CanvasRenderingContext2D,

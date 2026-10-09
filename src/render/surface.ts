@@ -1,24 +1,62 @@
 import { config } from "../config";
+import { render, type RendererKind } from "../config/render";
+import { isLocal, queryParam } from "../environment";
 import { byId } from "../utils/dom";
+import { createCanvasPainter } from "./canvas/painter";
+import type { Painter } from "./painter";
+import { createWebGLPainter } from "./webgl/painter";
 
 export const canvas = byId<HTMLCanvasElement>("gameCanvas", "canvas");
-export const ctx = canvas.getContext("2d")!;
+
+const NO_WEBGL = "MooMoo needs WebGL, which this browser has turned off.";
+
+function webglUnavailable(overlay: boolean): void {
+  if (render.disableFallback) {
+    byId("loadingText").textContent = NO_WEBGL;
+    throw new Error("WebGL unavailable");
+  }
+  console.warn("[render] WebGL is unavailable here; drawing with the 2D canvas instead");
+  if (!overlay) {
+    window.alert(
+      `WebGL is turned off in this browser.\n\nThe original game stops here with an error ("${NO_WEBGL}"). ` +
+      "This client carries on with the 2D canvas instead.",
+    );
+  }
+}
+
+function createPainter(target: HTMLCanvasElement, kind: RendererKind, overlay: boolean): Painter {
+  if (kind === "webgl") {
+    const webgl = createWebGLPainter(target, { overlay });
+    if (webgl) return webgl;
+    webglUnavailable(overlay);
+  }
+  return createCanvasPainter(target);
+}
+// local server stuff
+function chosenRenderer(): RendererKind {
+  const override = isLocal() ? queryParam("renderer") : null;
+  return override === "canvas" || override === "webgl" ? override : render.renderer;
+}
+
+export const painter: Painter = createPainter(canvas, chosenRenderer(), false);
+if (isLocal()) (window as unknown as { __painter: Painter }).__painter = painter;
 
 const TEXT_MAX_RATIO = 4;
 const textCanvas = byId<HTMLCanvasElement>("textCanvas", "canvas");
-const overlayCtx = textCanvas.getContext("2d")!;
+const overlayPainter: Painter = createPainter(textCanvas, painter.kind, true);
 
 export const textLayer = {
-  ctx,
+  painter,
   overlay: false,
 };
 
 export function clearTextLayer(): void {
-  if (!textLayer.overlay) return;
-  overlayCtx.save();
-  overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
-  overlayCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
-  overlayCtx.restore();
+  if (textLayer.overlay) overlayPainter.clear();
+}
+
+export function endFrame(): void {
+  painter.endFrame();
+  if (textLayer.overlay) overlayPainter.endFrame();
 }
 
 export const view = {
@@ -54,18 +92,20 @@ export function resizeCanvas(): void {
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
 
-  ctx.setTransform(zoom * pixelRatio, 0, 0, zoom * pixelRatio, 0, 0);
+  painter.setTransform(zoom * pixelRatio, 0, 0, zoom * pixelRatio, 0, 0);
+  painter.resize(zoom * pixelRatio);
 
   const textRatio = Math.min(TEXT_MAX_RATIO, window.devicePixelRatio || 1);
   textLayer.overlay = textRatio > pixelRatio;
-  textLayer.ctx = textLayer.overlay ? overlayCtx : ctx;
+  textLayer.painter = textLayer.overlay ? overlayPainter : painter;
   textCanvas.style.display = textLayer.overlay ? "block" : "none";
   if (textLayer.overlay) {
     textCanvas.width = Math.round(width * textRatio);
     textCanvas.height = Math.round(height * textRatio);
     textCanvas.style.width = `${width}px`;
     textCanvas.style.height = `${height}px`;
-    overlayCtx.setTransform(zoom * textRatio, 0, 0, zoom * textRatio, 0, 0);
+    overlayPainter.setTransform(zoom * textRatio, 0, 0, zoom * textRatio, 0, 0);
+    overlayPainter.resize(zoom * textRatio);
   }
 }
 

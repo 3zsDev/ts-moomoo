@@ -25,6 +25,7 @@ export interface WebSocketLike {
 }
 
 export type ConnectionHandler = (socket: WebSocketLike) => void;
+export type UpgradeHandler = (request: IncomingMessage, socket: Duplex, head: Buffer) => boolean;
 
 function acceptKey(key: string): string {
   return createHash("sha1").update(key + GUID).digest("base64");
@@ -201,8 +202,14 @@ class Connection implements WebSocketLike {
   }
 }
 
-export function attachWebSocketServer(server: HttpServer, onConnection: ConnectionHandler): void {
+export function attachWebSocketServer(
+  server: HttpServer,
+  onConnection: ConnectionHandler,
+  onUpgrade?: UpgradeHandler,
+): void {
   server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (onUpgrade?.(request, socket, head)) return;
+
     const key = request.headers["sec-websocket-key"];
     const version = request.headers["sec-websocket-version"];
 

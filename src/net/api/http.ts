@@ -19,7 +19,11 @@ function disabled(): Promise<Response> {
 // plain JSON POST against the API host
 export function apiPost(path: string, body: unknown, timeout = POST_TIMEOUT): Promise<Response> {
   if (!restApiEnabled()) return disabled();
-  return fetch(apiBase() + path, {
+  return apiPostTo(apiBase(), path, body, timeout);
+}
+
+export function apiPostTo(base: string, path: string, body: unknown, timeout = POST_TIMEOUT): Promise<Response> {
+  return fetch(base + path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

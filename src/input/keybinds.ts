@@ -159,6 +159,10 @@ export function movementKeys(): Record<number, [number, number]> {
   return moveKeys;
 }
 
+export function boundKey(id: ActionId): number {
+  return bound[id] ?? 0;
+}
+
 export function boundKeyName(action: KeyAction): string {
   return (!bound[action.id] && action.always) || keyName(bound[action.id] ?? 0);
 }

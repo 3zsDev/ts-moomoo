@@ -16,8 +16,6 @@ export async function installPageShell(): Promise<void> {
 
   if (shell.title) document.title = shell.title;
 
-  // importNode, because nodes parsed into another document have to be adopted
-  // before this one will take them.
   const nodes = Array.from(shell.body.childNodes, (node) => document.importNode(node, true));
   document.body.replaceChildren(...nodes);
 }

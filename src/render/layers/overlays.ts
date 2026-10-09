@@ -6,10 +6,9 @@ import { state } from "../../game/state";
 import { animals, players, textManager } from "../../game/world";
 import { inFallsPool } from "../../utils/falls";
 import { camera } from "../camera";
-import { ctx, textLayer, view } from "../canvas";
-import { fillRoundRect, measureText, text } from "../context";
-import { renderRoundRect } from "../shapes";
+import { painter, textLayer, view } from "../surface";
 import { icons } from "../sprites";
+import { hidesOwnName } from "../../ui/anonMode";
 
 const TAG_SCALE = 0.7;
 const CLANMATE_COLOR = "#ff6b6b";
@@ -51,14 +50,14 @@ export function renderOverlays(delta: number): void {
 
   if (boss) renderBossBar(boss);
 
-  textManager.update(delta, ctx, camera.left, camera.top);
+  textManager.update(delta, painter, camera.left, camera.top);
   renderChatBubbles(delta);
 }
 
 function renderNameAndHealth(entity: Player | Animal): void {
   const me = state.me;
   const player = entity as Player;
-  const tag = formatNameTag(player.team, player.clan);
+  const tag = formatNameTag(player.team, entity === me && hidesOwnName() ? null : player.clan);
   const name = entity.name ?? "";
 
   const screenX = entity.x - camera.left;
@@ -74,22 +73,22 @@ function renderNameAndHealth(entity: Player | Animal): void {
       !(player.team && player.team === me?.team);
     const color = clanmate ? CLANMATE_COLOR : "#fff";
 
-    const label = textLayer.ctx;
-    const tagWidth = tag.text ? measureText(label, `${tag.text} `, tagSize) : 0;
-    const total = tagWidth + measureText(label, name, size);
+    const label = textLayer.painter;
+    const tagWidth = tag.text ? label.measureText(`${tag.text} `, tagSize) : 0;
+    const total = tagWidth + label.measureText(name, size);
     const left = screenX - total / 2;
 
     if (tag.text) {
-      text(label, `${tag.text} `, left + tagWidth / 2, nameY, tagSize, {
+      label.text(`${tag.text} `, left + tagWidth / 2, nameY, tagSize, {
         color, outline: paletteColors.hudDark, outlineWidth: outlineWidth * TAG_SCALE,
       });
     }
-    text(label, name, left + tagWidth + (total - tagWidth) / 2, nameY, size, {
+    label.text(name, left + tagWidth + (total - tagWidth) / 2, nameY, size, {
       color, outline: paletteColors.hudDark, outlineWidth,
     });
     if (tag.gold && !clanmate) {
-      const goldX = left + measureText(label, tag.before, tagSize) + measureText(label, tag.gold, tagSize) / 2;
-      text(label, tag.gold, goldX, nameY, tagSize, { color: CLAN_GOLD });
+      const goldX = left + label.measureText(tag.before, tagSize) + label.measureText(tag.gold, tagSize) / 2;
+      label.text(tag.gold, goldX, nameY, tagSize, { color: CLAN_GOLD });
     }
 
     renderNameIcons(player, screenX, nameY, total / 2);
@@ -101,12 +100,12 @@ function renderNameAndHealth(entity: Player | Animal): void {
   const barWidth = config.healthBarWidth;
   const pad = config.healthBarPad;
 
-  ctx.fillStyle = paletteColors.hudDark;
-  fillRoundRect(ctx, screenX - barWidth - pad, barY, barWidth * 2 + pad * 2, 17, 8);
+  painter.fillStyle = paletteColors.hudDark;
+  painter.fillRoundRect(screenX - barWidth - pad, barY, barWidth * 2 + pad * 2, 17, 8);
 
-  ctx.fillStyle = isFriendly(entity) ? paletteColors.friendly : paletteColors.hostile;
+  painter.fillStyle = isFriendly(entity) ? paletteColors.friendly : paletteColors.hostile;
   const fraction = entity.maxHealth ? entity.health / entity.maxHealth : 0;
-  fillRoundRect(ctx, screenX - barWidth, barY + pad, barWidth * 2 * fraction, 17 - pad * 2, 7);
+  painter.fillRoundRect(screenX - barWidth, barY + pad, barWidth * 2 * fraction, 17 - pad * 2, 7);
 }
 
 function renderNameIcons(player: Player, screenX: number, nameY: number, halfLabel: number): void {
@@ -114,10 +113,10 @@ function renderNameIcons(player: Player, screenX: number, nameY: number, halfLab
   const iconY = nameY - size / 2 - 5;
 
   if (player.isLeader && icons.crown.isLoaded) {
-    ctx.drawImage(icons.crown, screenX - size / 2 - halfLabel - config.crownPad, iconY, size, size);
+    painter.drawImage(icons.crown, screenX - size / 2 - halfLabel - config.crownPad, iconY, size, size);
   }
   if (player.iconIndex === 1 && icons.skull.isLoaded) {
-    ctx.drawImage(icons.skull, screenX - size / 2 + halfLabel + config.crownPad, iconY, size, size);
+    painter.drawImage(icons.skull, screenX - size / 2 + halfLabel + config.crownPad, iconY, size, size);
   }
 }
 
@@ -183,18 +182,15 @@ function renderBossBar(boss: Player | Animal): void {
   const state = (boss as Animal).state;
   const submerged = state === 1 || state === 2 || state === 3;
 
-  ctx.globalAlpha = 1;
-  text(ctx, boss.name ?? "", centre, y - 26, 30, { color: "#fff", outline: paletteColors.hudDark, outlineWidth: 8 });
-  ctx.fillStyle = paletteColors.hudDark;
-  fillRoundRect(ctx, left - 5, y - 5, width + 10, 28, 12);
-  ctx.fillStyle = submerged ? "#5f87c4" : "#cc5151";
-  fillRoundRect(ctx, left, y, Math.max(0, width * (boss.health / (boss.maxHealth || 1))), 18, 9);
+  painter.globalAlpha = 1;
+  painter.text(boss.name ?? "", centre, y - 26, 30, { color: "#fff", outline: paletteColors.hudDark, outlineWidth: 8 });
+  painter.fillStyle = paletteColors.hudDark;
+  painter.fillRoundRect(left - 5, y - 5, width + 10, 28, 12);
+  painter.fillStyle = submerged ? "#5f87c4" : "#cc5151";
+  painter.fillRoundRect(left, y, Math.max(0, width * (boss.health / (boss.maxHealth || 1))), 18, 9);
 }
 
 function renderChatBubbles(delta: number): void {
-  ctx.font = "32px Hammersmith One";
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "center";
 
   for (const player of players) {
     if (!player.visible || player.chatCountdown <= 0 || !player.chatMessage) continue;
@@ -203,17 +199,11 @@ function renderChatBubbles(delta: number): void {
 
     const x = player.x - camera.left;
     const y = player.y - player.scale - camera.top - 90;
-    const width = ctx.measureText(player.chatMessage).width + 17;
+    const width = painter.measureText(player.chatMessage, 32) + 17;
 
-    ctx.fillStyle = "rgba(0,0,0,0.2)";
-    renderRoundRect(ctx, x - width / 2, y - 47 / 2, width, 47, 6);
-    ctx.fill();
+    painter.fillStyle = "rgba(0,0,0,0.2)";
+    painter.fillRoundRect(x - width / 2, y - 47 / 2, width, 47, 6);
 
-    const label = textLayer.ctx;
-    label.font = "32px Hammersmith One";
-    label.textBaseline = "middle";
-    label.textAlign = "center";
-    label.fillStyle = "#fff";
-    label.fillText(player.chatMessage, x, y);
+    textLayer.painter.text(player.chatMessage, x, y, 32, { color: "#fff" });
   }
 }

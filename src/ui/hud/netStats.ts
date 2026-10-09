@@ -1,4 +1,5 @@
 import { state } from "../../game/state";
+import { clicksPerSecond } from "../../input/outbound";
 import { ui } from "../elements";
 
 declare global {
@@ -9,7 +10,7 @@ declare global {
 
 const FPS_SAMPLE_TIME = 500;
 
-const settings = { showPing: false, showFps: false };
+const settings = { showPing: false, showFps: false, showCps: false };
 let inGame = false;
 
 let frames = 0;
@@ -25,11 +26,13 @@ function pingTier(ms: number): number {
 function refreshVisibility(): void {
   ui.pingDisplay.hidden = !settings.showPing || !inGame;
   ui.fpsDisplay.hidden = !settings.showFps || !inGame;
+  ui.cpsDisplay.hidden = !settings.showCps || !inGame;
 }
 
-export function setNetStatsOptions(showPing: boolean, showFps: boolean): void {
+export function setNetStatsOptions(showPing: boolean, showFps: boolean, showCps: boolean): void {
   settings.showPing = showPing;
   settings.showFps = showFps;
+  settings.showCps = showCps;
   refreshVisibility();
 }
 
@@ -53,6 +56,7 @@ export function countFrame(now: number): void {
   const fps = Math.round((frames * 1000) / elapsed);
   frames = 0;
   sampleStart = now;
+  if (!ui.cpsDisplay.hidden) ui.cpsDisplay.textContent = `${clicksPerSecond()} CPS`;
   if (ui.fpsDisplay.hidden) return;
 
   ui.fpsDisplay.textContent = `${fps} FPS`;

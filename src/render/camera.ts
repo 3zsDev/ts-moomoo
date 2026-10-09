@@ -1,7 +1,7 @@
 import { config } from "../config";
 import { state } from "../game/state";
 import { getDirection, getDistance } from "../utils/geometry";
-import { view } from "./canvas";
+import { view } from "./surface";
 
 export const camera = {
   left: 0,

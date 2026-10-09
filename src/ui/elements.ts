@@ -34,6 +34,7 @@ export const ui = {
   nativeResolutionToggle: byId<HTMLInputElement>("nativeResolution", "input"),
   showPingToggle: byId<HTMLInputElement>("showPing", "input"),
   showFpsToggle: byId<HTMLInputElement>("showFps", "input"),
+  showCpsToggle: byId<HTMLInputElement>("showCps", "input"),
   showGridToggle: byId<HTMLInputElement>("showGrid", "input"),
   cameraLockToggle: byId<HTMLInputElement>("cameraLock", "input"),
   keybindHolder: byId("keybindHolder"),
@@ -68,6 +69,7 @@ export const ui = {
   pingDisplay: byId("pingDisplay"),
   pingText: byId("pingText"),
   fpsDisplay: byId("fpsDisplay"),
+  cpsDisplay: byId("cpsDisplay"),
   shutdownDisplay: byId("shutdownDisplay"),
   diedText: byId("diedText"),
 

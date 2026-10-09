@@ -11,6 +11,7 @@ interface JoinResponse {
   ticket?: string;
   did?: string;
   error?: string;
+  seconds?: number;
 }
 
 export async function joinTicket(host: string, captchaToken: string | null): Promise<string | null> {
@@ -65,6 +66,12 @@ export async function joinTicket(host: string, captchaToken: string | null): Pro
     console.warn("[join] server ticket request was rejected", { status: response.status });
     const data: JoinResponse = await response.json().catch(() => ({}));
     if (data.error === "auth") throw new Error(SIGN_IN_REQUIRED);
+    if (data.error === "vpn") throw new Error("VPNs and proxies can't join as a guest - turn it off or sign in");
+    if (data.error === "locked") {
+      const seconds = data.seconds || 60;
+      const wait = seconds >= 120 ? `${Math.ceil(seconds / 60)} minutes` : `${seconds} seconds`;
+      throw new Error(`You were removed from the game - try again in ${wait}`);
+    }
     throw new Error(response.status === 429 ? "Too many attempts - try again soon" : "Invalid Connection");
   }
   if (!response.ok) {

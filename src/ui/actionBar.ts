@@ -1,7 +1,7 @@
 import { config } from "../config";
 import { itemData } from "../data/items";
 import { state } from "../game/state";
-import { selectItem } from "../input";
+import { tapBarItem } from "../input";
 import { createElement, hookTouchEvents, removeAllChildren } from "../utils/dom";
 import { getItemSprite, sprites } from "../render/sprites";
 import { ui } from "./elements";
@@ -27,6 +27,11 @@ export function buildActionBar(): void {
     });
   }
 
+  paintActionBar();
+}
+
+export function paintActionBar(): void {
+  const total = itemData.weapons.length + itemData.list.length;
   for (let index = 0; index < total; ++index) {
     if (index < ITEM_INDEX_OFFSET) setUpWeaponSlot(index);
     else setUpItemSlot(index);
@@ -60,7 +65,7 @@ function setUpWeaponSlot(index: number): void {
   else image.addEventListener("load", paint, { once: true });
 
   slot.onmouseover = () => showItemInfo(weapon, true);
-  slot.onclick = () => selectItem(index, true);
+  slot.onclick = () => tapBarItem(index, true);
   hookTouchEvents(slot);
 }
 
@@ -82,7 +87,7 @@ function setUpItemSlot(index: number): void {
 
   slot.style.backgroundImage = `url(${canvas.toDataURL()})`;
   slot.onmouseover = () => showItemInfo(item);
-  slot.onclick = () => selectItem(item.id);
+  slot.onclick = () => tapBarItem(item.id);
   hookTouchEvents(slot);
 }
 

@@ -3,7 +3,7 @@ import { protocol, type ProtocolSource } from "../../config/protocol";
 import { isSandbox } from "../../environment";
 
 const SANDBOX_BUILD = isSandbox();
-const BUILD = SANDBOX_BUILD ? { id: "s16nrc", salt: 3423846518 } : { id: "s16nqy", salt: 580153463 };
+const BUILD = SANDBOX_BUILD ? { id: "s16nx6", salt: 3312325388 } : { id: "s16nto", salt: 3836703251 };
 
 export let BUILD_ID = BUILD.id;
 export let BUILD_SALT = BUILD.salt;
@@ -69,18 +69,17 @@ function rotateLeft(value: number, shift: number): number {
 function mixProductionByte(salt: number, index: number): number {
   let value = Math.imul(index + 1, 0x9e3779b1) ^ salt;
 
-  value = rotateLeft(value, 6);
-  value = Math.imul(value, 0xfd856881) ^ 0x0102efc2;
-  value = (value + 0xb361822f) | 0;
-  value = rotateLeft(value, 8);
-  value = Math.imul(value, 0xc0587463);
-  value ^= value >>> 30;
-  value = rotateLeft(value, 7);
-  value = (value + 0xda531200) | 0;
+  value = rotateLeft(value, 31);
+  value ^= 0x4546a6c3;
   value ^= value << 1;
-  value = rotateLeft(value, 19);
-  value ^= value >>> 22;
-  value = Math.imul(value, 0xbc973307);
+  value = (value + 0xfa2c5de4) | 0;
+  value = rotateLeft(value, 9);
+  value = (value + 0x599d3f8d) | 0;
+  value = Math.imul(value, 0x5641c747);
+  value ^= 0x1b45a0c9;
+  value ^= value >>> 26;
+  value = (value + 0x7c7ab76e) | 0;
+  value = Math.imul(value, 0xe94e39eb);
 
   return (value >>> 11) & 0xff;
 }
@@ -88,16 +87,20 @@ function mixProductionByte(salt: number, index: number): number {
 function mixSandboxByte(salt: number, index: number): number {
   let value = Math.imul(index + 1, 0x9e3779b1) ^ salt;
 
-  value = rotateLeft(value, 8);
-  value = (value + 0xcf12ee92) | 0;
-  value = rotateLeft(value, 29);
-  value ^= value << 2;
-  value ^= value >>> 23;
-  value = (value + 0x91cace47) | 0;
-  value ^= value >>> 10;
-  value = rotateLeft(value, 25);
-  value ^= 0x89c5c94a;
-  value ^= value << 1;
+  value = Math.imul(value, 0xa1c2b131);
+  value ^= 0x9ade9f1c;
+  value = rotateLeft(value, 18);
+  value = (value + 0x6d942d68) | 0;
+  value ^= 0xa863a7b9;
+  value = Math.imul(value, 0xe3ddf835);
+  value ^= value << 28;
+  value = Math.imul(value, 0x97b513f3);
+  value = (value + 0xc7c2bc9b) | 0;
+  value ^= value >>> 24;
+  value = (value + 0x1a5ee6bf) | 0;
+  value = rotateLeft(value, 2);
+  value = (value + 0x5be3a83b) | 0;
+  value ^= 0x9921b73d;
 
   return (value >>> 11) & 0xff;
 }

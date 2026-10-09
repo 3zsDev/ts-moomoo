@@ -89,10 +89,10 @@ export function reportLife(life: LifeReport): void {
 }
 
 export async function reportPlayer(
-  reporter: ReportTarget, target: ReportTarget, action: number,
+  reporter: ReportTarget, target: ReportTarget, action: number, reason = 0,
 ): Promise<"ban" | "shadow" | null> {
   const result = await call<{ verdict?: "ban" | "shadow" }>(
-    "POST", "/internal/report", { reporter, target, action, server: serverKey },
+    "POST", "/internal/report", { reporter, target, action, reason: reason || undefined, server: serverKey },
   );
   return result?.verdict ?? null;
 }

@@ -1,5 +1,5 @@
 export { hideMenu, isMenuVisible, onMenuReturn, showMenuCards, showMenuNotice, showMenuStatus } from "./screens";
-export { bindSettingToggles, getPlayerName, loadSettings, saveName } from "./settings";
+export { bindAccountPrefs, bindSettingToggles, getPlayerName, loadSettings, saveName } from "./settings";
 export { bindSkinPicker, buildSkinColorPicker, selectedSkinColor, selectSkinColor } from "./skinPicker";
 export { bindServerPicker, refreshServerPicker } from "./serverPicker";
 export { bindPageChrome } from "./pageChrome";

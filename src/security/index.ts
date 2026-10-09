@@ -1,9 +1,12 @@
 import { nativeWebSocket } from "./natives";
 import { protection, type ProtectionOptions } from "./options";
+import { raiseSecurityFlag, SecurityFlag } from "./telemetry";
 import { detectUserscripts } from "./userscriptDetection";
 
 export { protection, type ProtectionOptions } from "./options";
 export { createSocket, sendOnSocket } from "./socket";
+export { securityFlags } from "./telemetry";
+export { ignoreSyntheticClicks, isTrustedEvent, trusted, untrustedEventCount } from "./trusted";
 
 let applied = false;
 
@@ -41,6 +44,8 @@ function blockDevToolsKeys(): void {
 
 function startAntiDebug(): void {
   setInterval(() => {
+    const start = performance.now();
     debugger;
+    if (performance.now() - start > 200) raiseSecurityFlag(SecurityFlag.Debugger);
   }, protection.antiDebugInterval);
 }

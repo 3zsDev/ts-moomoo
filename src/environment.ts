@@ -15,7 +15,6 @@ const DEV_HOST = /^dev[a-z0-9-]*\.moomoo\.io$/;
 export interface LocalSite {
   sandbox: boolean;
   peer: string | null;
-  // our local servers set this when the api is running, so ?api=local isn't needed
   api?: boolean;
 }
 
@@ -72,7 +71,32 @@ export function restApiEnabled(): boolean {
 }
 
 export function socialEnabled(): boolean {
-  return !isSandbox();
+  return true;
+}
+
+export type SiteEnv = "prod" | "sandbox" | "dev";
+
+export function siteEnv(): SiteEnv {
+  if (isSandbox()) return "sandbox";
+  return isDev() || isLocal() ? "dev" : "prod";
+}
+
+export const SITE_ENV_NAMES: Record<SiteEnv, string> = {
+  prod: "the main game",
+  sandbox: "the Sandbox",
+  dev: "the Dev server",
+};
+
+const SITE_ENV_URLS: Record<SiteEnv, string> = {
+  prod: "https://moomoo.io",
+  sandbox: "https://sandbox.moomoo.io",
+  dev: "https://dev.moomoo.io",
+};
+
+export function siteEnvUrl(env: string): string | null {
+  const site = localSite();
+  if (site?.peer && env === (site.sandbox ? "dev" : "sandbox")) return site.peer.replace(/\/+$/, "");
+  return SITE_ENV_URLS[env as SiteEnv] ?? null;
 }
 
 export function leaderboardsEnabled(): boolean {

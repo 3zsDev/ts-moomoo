@@ -7,7 +7,7 @@ import { ui } from "./elements";
 import { renderFriends } from "./friends/friendList";
 import { leaderboardPlayers } from "./hud/leaderboard";
 import { currentView } from "./menu/views";
-import { isAlive, mySid, sendReport } from "./netBridge";
+import { isAlive, mySid, sendReport, sendReportReason } from "./netBridge";
 
 export type GameMenuTab = "settings" | "friends" | "clan" | "report";
 
@@ -21,7 +21,8 @@ const gameFriendsBody = byId("gameFriendsBody");
 const tabs = Array.from(document.querySelectorAll<HTMLElement>("#gameMenuTabs a"));
 
 let activeTab: GameMenuTab = "settings";
-const reported: Record<number, true> = {};
+const reported: Record<number, 1 | 2> = {};
+const REPORT_REASONS = ["Bot", "Hack", "Autoheal", "Abuse"];
 
 export function isGameMenuOpen(): boolean {
   return ui.gameSettings.style.display === "block";
@@ -53,11 +54,33 @@ function renderReports(): void {
       hookTouch: true,
       onclick: () => {
         if (reported[sid]) return;
-        reported[sid] = true;
+        reported[sid] = 1;
         sendReport(sid);
         report.textContent = "Reported";
+        askReason();
       },
     });
+
+    let reasons: HTMLElement | undefined;
+    const askReason = () => {
+      if (reasons || reported[sid] !== 1) return;
+      reasons = createElement({ class: "reportReasons", text: "What for?" });
+      REPORT_REASONS.forEach((label, index) => {
+        createElement({
+          class: "joinAlBtn reportReason",
+          text: label,
+          parent: reasons,
+          hookTouch: true,
+          onclick: () => {
+            if (reported[sid] !== 1) return;
+            reported[sid] = 2;
+            sendReportReason(sid, index + 1);
+            reasons!.textContent = "Thanks";
+          },
+        });
+      });
+      row.after(reasons);
+    };
     const buttons = [report];
 
     if (staff) {
@@ -81,7 +104,8 @@ function renderReports(): void {
       }
     }
 
-    createElement({ class: "allianceItem", text: name || "unknown", parent: ui.reportHolder, children: buttons });
+    const row = createElement({ class: "allianceItem", text: name || "unknown", parent: ui.reportHolder, children: buttons });
+    askReason();
   };
 
   for (const player of players) if (player.visible) add(player.sid, player.name);

@@ -27,9 +27,28 @@ function sendError(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
+export function shareLinkRedirect(pathname: string): string | null {
+  const match = /^\/(player|clan)\/([^/]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  let value: string;
+  try {
+    value = decodeURIComponent(match[2]);
+  } catch {
+    return null;
+  }
+  return `/?${match[1] === "player" ? "profile" : "clan"}=${encodeURIComponent(value)}`;
+}
+
 export function serveStatic(
   res: ServerResponse, publicDir: string, pathname: string, injectHead = "",
 ): void {
+  const redirect = shareLinkRedirect(pathname);
+  if (redirect) {
+    res.writeHead(302, { Location: redirect, "Cache-Control": "no-store" });
+    res.end();
+    return;
+  }
+
   if (!existsSync(publicDir)) {
     sendError(res, 404, { error: "client not built", hint: "run: npm run build" });
     return;

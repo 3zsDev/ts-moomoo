@@ -4,6 +4,23 @@ import { byId } from "../utils/dom";
 export const canvas = byId<HTMLCanvasElement>("gameCanvas", "canvas");
 export const ctx = canvas.getContext("2d")!;
 
+const TEXT_MAX_RATIO = 4;
+const textCanvas = byId<HTMLCanvasElement>("textCanvas", "canvas");
+const overlayCtx = textCanvas.getContext("2d")!;
+
+export const textLayer = {
+  ctx,
+  overlay: false,
+};
+
+export function clearTextLayer(): void {
+  if (!textLayer.overlay) return;
+  overlayCtx.save();
+  overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+  overlayCtx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+  overlayCtx.restore();
+}
+
 export const view = {
   width: config.maxScreenWidth,
   height: config.maxScreenHeight,
@@ -38,6 +55,18 @@ export function resizeCanvas(): void {
   canvas.style.height = `${height}px`;
 
   ctx.setTransform(zoom * pixelRatio, 0, 0, zoom * pixelRatio, 0, 0);
+
+  const textRatio = Math.min(TEXT_MAX_RATIO, window.devicePixelRatio || 1);
+  textLayer.overlay = textRatio > pixelRatio;
+  textLayer.ctx = textLayer.overlay ? overlayCtx : ctx;
+  textCanvas.style.display = textLayer.overlay ? "block" : "none";
+  if (textLayer.overlay) {
+    textCanvas.width = Math.round(width * textRatio);
+    textCanvas.height = Math.round(height * textRatio);
+    textCanvas.style.width = `${width}px`;
+    textCanvas.style.height = `${height}px`;
+    overlayCtx.setTransform(zoom * textRatio, 0, 0, zoom * textRatio, 0, 0);
+  }
 }
 
 export function setNativeResolution(enabled: boolean): void {

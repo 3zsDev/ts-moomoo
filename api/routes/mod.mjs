@@ -1,9 +1,17 @@
+import { createHash } from "node:crypto";
+
 import { fail, ok } from "../lib/http.mjs";
 import { isStaff, signedIn } from "./accounts.mjs";
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const LEVELS = new Set(["ban", "shadow", "clear"]);
 const POWER = { admin: 2, mod: 1 };
+const KICK_LOCK_SECONDS = Number(process.env.KICK_LOCK_SECONDS ?? 300);
+const IP_SALT = process.env.IP_HASH_SALT ?? process.env.INTERNAL_KEY ?? "moomoo";
+
+function hashIp(ip) {
+  return createHash("sha256").update(`${IP_SALT}:${ip}`).digest("hex").slice(0, 12);
+}
 
 export function subjectOf(store, body) {
   if (typeof body.id === "string" && body.id) {
@@ -30,8 +38,8 @@ export function modRecord(subject) {
     },
     flags: { week: { total: 0 }, lifetime: { total: 0, signals: {} } },
     verdict: subject.verdict ? { level: subject.verdict.level, reason: subject.verdict.reason } : undefined,
-    session: subject.session ?? undefined,
-    recent: reports.slice(0, 10).map((report) => ({ by: report.by, at: report.at })),
+    session: subject.session ? { ...subject.session, ip: subject.session.ip ? hashIp(subject.session.ip) : undefined } : undefined,
+    recent: reports.slice(0, 10).map((report) => ({ by: report.by, at: report.at, reason: report.reason })),
   };
 }
 
@@ -74,6 +82,10 @@ export const modRoutes = {
     if (!subject) return fail(404, "not found");
 
     ctx.notifyServers("/internal/moderate", { ...targetOf(subject), action: "kick", reason: body.reason });
+    if (KICK_LOCK_SECONDS > 0) {
+      const ip = subject.session?.ip;
+      ctx.store.lock(ip ? [subject.id, `ip:${ip}`] : [subject.id], KICK_LOCK_SECONDS);
+    }
     return ok();
   },
 

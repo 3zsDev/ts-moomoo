@@ -55,6 +55,7 @@ export interface PastClanMember {
 
 export interface Clan {
   name: string;
+  closed?: boolean;
   stats: { kills?: number; raidKills?: number; periods?: { week?: PeriodStats; month?: PeriodStats } };
   members: ClanMember[];
   past?: PastClanMember[];

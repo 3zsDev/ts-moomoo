@@ -63,7 +63,10 @@ function fillWaterBand(padding: number): void {
   if (top < view.height && top + height > 0) ctx.fillRect(0, top, view.width, height);
 }
 
+export const grid = { visible: true };
+
 export function renderGrid(): void {
+  if (!grid.visible) return;
   const spacing = config.maxScreenHeight / 18;
 
   ctx.lineWidth = 4;
@@ -80,7 +83,6 @@ export function renderGrid(): void {
   ctx.globalAlpha = 1;
 }
 
-// 1.9 dropped the shade on the west edge, falls continue past it
 export function renderMapBorders(): void {
   ctx.fillStyle = "#000";
   ctx.globalAlpha = 0.09;

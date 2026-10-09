@@ -50,9 +50,9 @@ export function playerStats(
 
 export type ReportAction = 0 | 1 | 2;
 
-// report a player (R sid), staff pass 1 to shadow or 2 to ban
-export function reportPlayer(sid: number, action: ReportAction = 0): void {
-  if (action) connection.send(ClientPacket.ReportPlayer, sid, action);
+export function reportPlayer(sid: number, action: ReportAction = 0, reason = 0): void {
+  if (reason) connection.send(ClientPacket.ReportPlayer, sid, 0, reason);
+  else if (action) connection.send(ClientPacket.ReportPlayer, sid, action);
   else connection.send(ClientPacket.ReportPlayer, sid);
 }
 

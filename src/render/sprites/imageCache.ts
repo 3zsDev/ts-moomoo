@@ -19,15 +19,29 @@ export function loadImage(path: string): LoadedImage {
   return image;
 }
 
+let imageOverride: ((path: string) => string | undefined) | null = null;
+
+export function setImageOverride(lookup: ((path: string) => string | undefined) | null): void {
+  imageOverride = lookup;
+}
+
+export function imageUrl(path: string): string {
+  return imageOverride?.(path) ?? assetUrl(`img/${path}`);
+}
+
 export const sprites = {
-  weapon: (name: string) => loadImage(assetUrl(`img/weapons/${name}.png`)),
-  hat: (id: number | string) => loadImage(assetUrl(`img/hats/hat_${id}.png`)),
-  accessory: (id: number | string) => loadImage(assetUrl(`img/accessories/access_${id}.png`)),
-  animal: (name: string) => loadImage(assetUrl(`img/animals/${name}.png`)),
-  icon: (name: string) => loadImage(assetUrl(`img/icons/${name}.png`)),
+  weapon: (name: string) => loadImage(imageUrl(`weapons/${name}.png`)),
+  hat: (id: number | string) => loadImage(imageUrl(`hats/hat_${id}.png`)),
+  accessory: (id: number | string) => loadImage(imageUrl(`accessories/access_${id}.png`)),
+  animal: (name: string) => loadImage(imageUrl(`animals/${name}.png`)),
+  icon: (name: string) => loadImage(imageUrl(`icons/${name}.png`)),
 };
 
 export const icons = {
-  crown: sprites.icon("crown"),
-  skull: sprites.icon("skull"),
+  get crown() {
+    return sprites.icon("crown");
+  },
+  get skull() {
+    return sprites.icon("skull");
+  },
 };

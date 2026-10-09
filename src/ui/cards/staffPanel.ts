@@ -14,7 +14,7 @@ interface ModRecord {
   flags?: { week: { total?: number }; lifetime: { total?: number; signals?: Record<string, number> } };
   verdict?: { level: string; reason?: string };
   session?: { at: number; server?: string; ip?: string };
-  recent?: { by: { name?: string; kind?: string }; at: number }[];
+  recent?: { by: { name?: string; kind?: string }; at: number; reason?: string }[];
 }
 
 function timeAgo(at: number): string {
@@ -58,11 +58,12 @@ function fillRecord(info: HTMLElement, record: ModRecord | null): void {
   if (record.session) {
     const server = record.session.server ? ` on ${record.session.server.split(".")[0]}` : "";
     line(info, "Last played", timeAgo(record.session.at) + server);
-    if (record.session.ip) line(info, "Last IP", record.session.ip);
+    if (record.session.ip) line(info, "Last IP (hashed)", record.session.ip);
   }
   for (const report of (record.recent ?? []).slice(0, 5)) {
     const guest = report.by.kind === "guest" ? " (guest)" : "";
-    line(info, "", `Reported by ${report.by.name || "unnamed"}${guest} · ${timeAgo(report.at)}`);
+    const reason = report.reason ? ` for ${report.reason}` : "";
+    line(info, "", `Reported by ${report.by.name || "unnamed"}${guest}${reason} · ${timeAgo(report.at)}`);
   }
 }
 

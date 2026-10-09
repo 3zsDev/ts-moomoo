@@ -1,3 +1,4 @@
+import { loadSetting, saveSetting } from "../utils/storage";
 import { discoverLocalServers } from "./localServers";
 
 export interface RegionInfo {
@@ -66,6 +67,8 @@ export interface BrowserPolicy {
 }
 
 const PING_TIMEOUT = 2500;
+const AUTO_SERVER_KEY = "moo_auto_server";
+const MISSING_GRACE = 2;
 
 function measure(url: string): Promise<number> {
   const start = performance.now();
@@ -77,6 +80,10 @@ export class ServerBrowser {
   private pings: Record<string, number> = {};
   private selection: Selection | null = null;
   private userChose = false;
+  private pinned = false;
+  private loaded = false;
+  private firstLoad: Promise<void> | null = null;
+  private misses = 0;
   private policy: BrowserPolicy = { isMember: () => false, isStaff: () => false };
   private readonly listeners: ((kind: BrowserChange) => void)[] = [];
 
@@ -199,7 +206,13 @@ export class ServerBrowser {
     return region ? { region, name: name || "" } : null;
   }
 
+  private saveAuto(): void {
+    if (this.selection && !this.pinned) saveSetting(AUTO_SERVER_KEY, this.key());
+    else saveSetting(AUTO_SERVER_KEY, "");
+  }
+
   private writeHash(): void {
+    this.saveAuto();
     if (!this.selection) return;
     const hash = `#${this.key()}`;
     if (location.hash === hash) return;
@@ -213,15 +226,25 @@ export class ServerBrowser {
     }
   }
 
-  private reselect(): boolean {
+  private reselect(upgrade = false): boolean {
     const before = this.selection && this.key();
-    let next = this.selection;
 
+    if (this.loaded && this.selection?.name && this.entries.length) {
+      if (this.find(this.selection.region, this.selection.name)) this.misses = 0;
+      else if (this.misses < MISSING_GRACE) {
+        this.misses++;
+        return false;
+      }
+    }
+    this.misses = 0;
+
+    let next = this.selection;
     if (!next) {
       const fromUrl = this.fromUrl();
       if (fromUrl && this.inRegion(fromUrl.region).length) {
         next = fromUrl;
         this.userChose = true;
+        this.pinned = Boolean(fromUrl.name) && `${fromUrl.region}:${fromUrl.name}` !== loadSetting(AUTO_SERVER_KEY);
       }
     }
 
@@ -235,8 +258,10 @@ export class ServerBrowser {
 
     if (next) {
       const current = next.name ? this.find(next.region, next.name) : null;
-      if (!current || (this.isFull(current) && !this.policy.isStaff())) {
-        const best = this.bestIn(next.region);
+      const best = this.bestIn(next.region);
+      const toMembers = upgrade && !this.pinned && this.policy.isMember() && current && !current.auth && best?.auth;
+      if (!current || toMembers) {
+        this.pinned = false;
         next = { region: next.region, name: best?.name ?? current?.name ?? "" };
       }
     }
@@ -248,6 +273,8 @@ export class ServerBrowser {
 
   public choose(region: string, name?: string): void {
     this.userChose = true;
+    this.pinned = Boolean(name);
+    this.misses = 0;
     this.selection = { region, name: name || "" };
     this.reselect();
     this.emit("user");
@@ -256,12 +283,14 @@ export class ServerBrowser {
   public moveOff(): ServerEntry | null {
     if (!this.selection) return null;
     const current = this.selection.name;
+    const member = this.policy.isMember();
     const others = this.inRegion(this.selection.region)
       .filter((entry) => entry.name != current && this.joinable(entry))
-      .sort((a, b) => b.playerCount - a.playerCount);
+      .sort((a, b) => (member ? Number(Boolean(b.auth)) - Number(Boolean(a.auth)) : 0) || b.playerCount - a.playerCount);
 
     const target = others[0];
     if (!target) return null;
+    this.pinned = false;
     this.selection = { region: this.selection.region, name: target.name };
     this.writeHash();
     this.emit("user");
@@ -269,7 +298,7 @@ export class ServerBrowser {
   }
 
   public refresh(): void {
-    this.emit(this.reselect() ? "list" : "refresh");
+    this.emit(this.reselect(true) ? "list" : "refresh");
   }
 
 
@@ -298,19 +327,30 @@ export class ServerBrowser {
   }
 
   public setEntries(list: ServerEntry[]): Promise<void> {
-    const first = !this.entries.length;
     this.entries = (Array.isArray(list) ? list : []).map((entry) => ({ ...entry, region: String(entry.region) }));
 
-    if (first) {
-      return this.measureRegions().then(() => {
-        this.reselect();
-        this.emit("list");
-      });
+    if (this.loaded) {
+      this.emit(this.reselect() ? "list" : "refresh");
+      void this.measureRegions().then(() => this.emit("refresh"));
+      return Promise.resolve();
+    }
+    if (!this.entries.length) return Promise.resolve();
+
+    // a server named in the url is shown straight away; the rest waits for pings to pick a region
+    const fromUrl = !this.selection && this.fromUrl();
+    if (fromUrl && fromUrl.name && this.find(fromUrl.region, fromUrl.name)) {
+      this.reselect(true);
+      this.emit("list");
     }
 
-    this.emit(this.reselect() ? "list" : "refresh");
-    void this.measureRegions().then(() => this.emit(this.reselect() ? "list" : "refresh"));
-    return Promise.resolve();
+    this.firstLoad ??= this.measureRegions().then(() => {
+      this.reselect(true);
+      this.loaded = Boolean(this.selection);
+      this.firstLoad = null;
+      if (this.loaded) this.userChose = true;
+      this.emit("list");
+    });
+    return this.firstLoad;
   }
 
   public async load(listUrl: string): Promise<void> {

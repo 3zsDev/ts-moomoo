@@ -10,15 +10,21 @@ function render(): void {
   removeAllChildren(holder);
   const capturing = capturingAction();
 
+  let section: string | undefined;
   for (const action of KEY_ACTIONS) {
+    if (action.section !== section) {
+      section = action.section;
+      createElement({ class: "keybindTitle", text: section, parent: holder });
+    }
     const row = createElement({ class: "keybindRow", parent: holder });
     createElement({ tag: "span", text: action.label, parent: row });
     createElement({
       class: "keybindBtn" + (capturing === action ? " capturing" : ""),
-      text: capturing === action ? "Press a key" : boundKeyName(action.id),
+      text: capturing === action ? "Press a key" : boundKeyName(action),
       onclick: () => toggleCapture(action),
       parent: row,
     });
+    if (action.note) createElement({ class: "keybindNote", text: action.note, parent: holder });
   }
 
   createElement({

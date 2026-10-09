@@ -1,6 +1,6 @@
 import * as esbuild from "esbuild";
 import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -118,10 +118,22 @@ const MANIFEST = {
   ],
 };
 
+const TEXTURE_FOLDERS = ["hats", "accessories", "weapons", "animals", "icons"];
+function textureList() {
+  const list = [];
+  for (const folder of TEXTURE_FOLDERS) {
+    const dir = path.join(root, "public", "img", folder);
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) if (/\.(png|jpe?g|webp|gif)$/i.test(name)) list.push(`${folder}/${name}`);
+  }
+  return list.sort();
+}
+
 /** @type {import("esbuild").BuildOptions} */
 const shared = {
   entryPoints: [path.join(root, "src/main.ts")],
   bundle: true,
+  define: { __TEXTURES__: JSON.stringify(textureList()) },
   platform: "browser",
   target: "es2022",
   legalComments: "none",

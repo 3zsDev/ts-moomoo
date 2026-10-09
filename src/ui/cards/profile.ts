@@ -5,6 +5,7 @@ import { kFormat } from "../../utils/math";
 import { currentView } from "../menu/views";
 import { isConnected, mySid, onPlayerStats, requestPlayerStats } from "../netBridge";
 import { closeClanCard, openClanByName } from "./clan";
+import { copyLinkButton } from "./shareLink";
 import { renderStaffPanel } from "./staffPanel";
 
 const card = {
@@ -262,7 +263,17 @@ function editSocials(socials: Socials): void {
       }
       postWithAuth("/account/socials", { socials: next })
         .then((response) => {
-          if (response.status === 400) throw new Error("Only plain handles, nothing rude");
+          if (response.status === 400) {
+            return response
+              .json()
+              .catch(() => ({}))
+              .then((data: { field?: keyof Socials; why?: string }) => {
+                const field = data.field && SOCIALS[data.field] ? `${SOCIALS[data.field][0]}: ` : "";
+                throw new Error(field + (data.why === "rude"
+                  ? "that handle isn't allowed"
+                  : "just the handle - letters, numbers, dots, underscores and hyphens"));
+              });
+          }
           if (!response.ok) throw new Error("Couldn't save");
           return response.json() as Promise<{ socials?: Socials }>;
         })
@@ -294,7 +305,9 @@ function renderFriendControls(userId: string): void {
       onclick: () => {
         run().catch((error: { status?: number }) => {
           card.status.textContent =
-            error?.status === 429 ? "Too many friend requests - try again later" : "Couldn't do that";
+            error?.status === 429 ? "Too many friend requests - try again later"
+            : error?.status === 403 ? "That player isn't taking friend requests"
+            : "Couldn't do that";
         });
       },
     });
@@ -375,6 +388,7 @@ function fillProfile(profile: Profile): void {
     });
   }
 
+  copyLinkButton(card.actions, `/player/${encodeURIComponent(profile.name)}`, card.status);
   if (isStaff() && !own) {
     renderStaffPanel(card.actions, card.status, { name: profile.name, role: profile.role ?? undefined });
   }

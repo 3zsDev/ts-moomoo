@@ -25,6 +25,10 @@ export function sendReport(sid: number, level?: 1 | 2): void {
   reportPlayer(sid, level ?? 0);
 }
 
+export function sendReportReason(sid: number, reason: number): void {
+  reportPlayer(sid, 0, reason);
+}
+
 export function sendAdminCommand(command: string, ...args: MsgPackValue[]): void {
   sendAdminPacket(command, ...args);
 }

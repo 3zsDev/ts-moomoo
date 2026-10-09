@@ -6,8 +6,10 @@ import { isStaff, signedIn } from "./accounts.mjs";
 import { applyVerdict } from "./mod.mjs";
 
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET ?? "";
+const VPN_CHECK_URL = process.env.VPN_CHECK_URL ?? "";
 const TICKET_TTL = 2 * 60 * 1000;
 const REPORT_COOLDOWN = 10 * 60 * 1000;
+const REPORT_REASONS = ["Bot", "Hack", "Autoheal", "Abuse"];
 const MAX_REPORTS = 200;
 const DEVICE_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const STAT_LIMIT = 1e9;
@@ -38,6 +40,31 @@ async function captchaValid(token, ip) {
   }
 }
 
+const vpnCache = new Map();
+
+async function isProxy(ip) {
+  if (!VPN_CHECK_URL || !ip || ip === "127.0.0.1" || ip === "::1") return false;
+  const cached = vpnCache.get(ip);
+  if (cached && Date.now() - cached.at < 60 * 60 * 1000) return cached.proxy;
+
+  let proxy = false;
+  try {
+    const response = await fetch(VPN_CHECK_URL.replace("{ip}", encodeURIComponent(ip)), { signal: AbortSignal.timeout(3000) });
+    const data = await response.json();
+    const entry = data?.[ip] ?? data;
+    proxy = entry?.proxy === true || entry?.proxy === "yes" || entry?.vpn === true || entry?.vpn === "yes";
+  } catch {}
+  vpnCache.set(ip, { proxy, at: Date.now() });
+  if (vpnCache.size > 10000) vpnCache.clear();
+  return proxy;
+}
+
+export function lockKeys(subject, ip) {
+  const keys = [subject.id];
+  if (ip) keys.push(`ip:${ip}`);
+  return keys;
+}
+
 function count(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.min(Math.round(number), STAT_LIMIT) : 0;
@@ -60,6 +87,10 @@ export const gameRoutes = {
     const user = body.auth ? await signedIn(ctx, body.auth) : null;
     const did = typeof body.did === "string" && DEVICE_ID.test(body.did) ? body.did : randomBytes(16).toString("hex");
     if (banned(user) || banned(ctx.store.guests[did])) return fail(403, "banned");
+
+    const seconds = ctx.store.lockedFor([user?.id ?? `g:${did}`, `ip:${ip}`]);
+    if (seconds) return { status: 403, body: { error: "locked", seconds } };
+    if (!user && (await isProxy(ip))) return fail(403, "vpn");
 
     const ticket = randomBytes(24).toString("base64url");
     tickets.set(ticket, { userId: user?.id ?? null, did, at: Date.now() });
@@ -88,6 +119,7 @@ export const gameRoutes = {
     const user = userId ? ctx.store.users[userId] ?? null : null;
     const subject = user ?? ctx.store.guest(did);
     if (banned(subject)) return ok({ ok: false, reason: "banned" });
+    if (ctx.store.lockedFor(lockKeys(subject, ip))) return ok({ ok: false, reason: "locked" });
 
     subject.session = { at: Date.now(), server: String(body.server ?? ""), ip };
     ctx.store.save();
@@ -153,15 +185,24 @@ export const gameRoutes = {
     }
 
     const reporterKey = reporterUser?.id ?? `g:${reporter.did ?? ""}`;
+    const reason = REPORT_REASONS[(Number(body.reason) || 0) - 1];
     subject.reports ??= [];
     const recent = subject.reports.find((report) => report.from === reporterKey && Date.now() - report.at < REPORT_COOLDOWN);
-    if (recent) return ok();
+    if (recent) {
+      // the reason arrives as a second packet right after the report itself
+      if (reason && !recent.reason) {
+        recent.reason = reason;
+        ctx.store.save();
+      }
+      return ok();
+    }
 
     subject.reports.unshift({
       at: Date.now(),
       from: reporterKey,
       server: String(body.server ?? ""),
       by: { name: (reporterUser?.name ?? String(reporter.name ?? "")) || undefined, kind: reporterUser ? undefined : "guest" },
+      reason,
     });
     subject.reports.length = Math.min(subject.reports.length, MAX_REPORTS);
     subject.reportsTotal = (subject.reportsTotal ?? 0) + 1;

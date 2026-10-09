@@ -6,7 +6,7 @@ import { state } from "../../game/state";
 import { animals, players, textManager } from "../../game/world";
 import { inFallsPool } from "../../utils/falls";
 import { camera } from "../camera";
-import { ctx, view } from "../canvas";
+import { ctx, textLayer, view } from "../canvas";
 import { fillRoundRect, measureText, text } from "../context";
 import { renderRoundRect } from "../shapes";
 import { icons } from "../sprites";
@@ -74,21 +74,22 @@ function renderNameAndHealth(entity: Player | Animal): void {
       !(player.team && player.team === me?.team);
     const color = clanmate ? CLANMATE_COLOR : "#fff";
 
-    const tagWidth = tag.text ? measureText(ctx, `${tag.text} `, tagSize) : 0;
-    const total = tagWidth + measureText(ctx, name, size);
+    const label = textLayer.ctx;
+    const tagWidth = tag.text ? measureText(label, `${tag.text} `, tagSize) : 0;
+    const total = tagWidth + measureText(label, name, size);
     const left = screenX - total / 2;
 
     if (tag.text) {
-      text(ctx, `${tag.text} `, left + tagWidth / 2, nameY, tagSize, {
+      text(label, `${tag.text} `, left + tagWidth / 2, nameY, tagSize, {
         color, outline: paletteColors.hudDark, outlineWidth: outlineWidth * TAG_SCALE,
       });
     }
-    text(ctx, name, left + tagWidth + (total - tagWidth) / 2, nameY, size, {
+    text(label, name, left + tagWidth + (total - tagWidth) / 2, nameY, size, {
       color, outline: paletteColors.hudDark, outlineWidth,
     });
     if (tag.gold && !clanmate) {
-      const goldX = left + measureText(ctx, tag.before, tagSize) + measureText(ctx, tag.gold, tagSize) / 2;
-      text(ctx, tag.gold, goldX, nameY, tagSize, { color: CLAN_GOLD });
+      const goldX = left + measureText(label, tag.before, tagSize) + measureText(label, tag.gold, tagSize) / 2;
+      text(label, tag.gold, goldX, nameY, tagSize, { color: CLAN_GOLD });
     }
 
     renderNameIcons(player, screenX, nameY, total / 2);
@@ -208,7 +209,11 @@ function renderChatBubbles(delta: number): void {
     renderRoundRect(ctx, x - width / 2, y - 47 / 2, width, 47, 6);
     ctx.fill();
 
-    ctx.fillStyle = "#fff";
-    ctx.fillText(player.chatMessage, x, y);
+    const label = textLayer.ctx;
+    label.font = "32px Hammersmith One";
+    label.textBaseline = "middle";
+    label.textAlign = "center";
+    label.fillStyle = "#fff";
+    label.fillText(player.chatMessage, x, y);
   }
 }

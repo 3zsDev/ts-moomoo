@@ -184,6 +184,9 @@ the API all read them.
 | `API_JWKS_URL` | — | JWKS for checking account token signatures. Without it tokens are only decoded, which is fine locally but **must be set on a public server** |
 | `TURNSTILE_SECRET` | — | Cloudflare Turnstile secret. Without it captcha tokens aren't checked |
 | `INTERNAL_KEY` | — | Shared secret between the API and game servers. Without it, only calls from the same machine are trusted |
+| `KICK_LOCK_SECONDS` | `300` | How long a player kicked by a mod can't rejoin ("You were removed from the game - try again in ..."). `0` turns it off |
+| `VPN_CHECK_URL` | — | Optional proxy/VPN lookup for guests, e.g. `https://proxycheck.io/v2/{ip}?vpn=1`. Guests it flags are refused; signed-in players never are |
+| `IP_HASH_SALT` | `INTERNAL_KEY` | Salt for the hashed IP that staff see in the mod panel |
 
 Setting one for a single run:
 
@@ -256,133 +259,99 @@ a link to it. Rebound keys are saved in `localStorage.moo_keybinds` (Settings ->
 
 ---
 
-## What changed from 1.8.2 to 1.9.0
+## What changed from 1.9.0 to 1.9.1
 
-### Gameplay
+### Gameplay & controls
 
-- **New hats**
-  - Scout Hat (#59): 3500 gold, 1.08x speed, takes 1.12x damage.
-  - Frost Helm (#60): 7000 gold, no snow slowdown, 0.94x speed, takes 0.88x damage.
-  - Crab Shell (#61): can't be bought; dropped by the Crab King. Reflects 30% of damage, takes 0.85x damage, 0.92x speed.
-- **Accessory effects** (`src/config/effects.ts`). Capes and tails that used to be cosmetic now do something:
-  - Snowball / Winter Cape: less or no snow slowdown.
-  - Tree / Stone / Cookie Cape: +1 resource per hit.
-  - Cow Cape: 1.5x from cows.
-  - Skull Cape: 3x gold for killing the kill leader.
-  - Dash Cape: 1.05x speed.
-  - Dragon Cape: 1.05x damage for 5s after hitting a player.
-  - Super Cape: buff after a kill.
-  - Troll Cape: 2x gold for spike kills.
-  - Thorns: heal on hit.
-  - Blockades: 0.75x projectile damage.
-  - Devils Tail: bleed.
-- **Emerald weapon variant** (id 4, `_e` sprites). 1.18x damage, 15% lifesteal, members only; XP alone never unlocks it.
-- **New animals**
-  - Boar (9) and Yeti (10).
-  - Sheep (12).
-  - Crab King boss (11), Crab (13) and Crabling (14).
-  - Animals now have dive/surface states. They can't be hit or deal damage while under water.
-- **The Falls.** A new area west of the map: gorge, pools and waterfall.
-  - Water slows you down.
-  - You can't build there.
-  - It hides you and your teammates from the minimap.
-  - The Crab King lives there, with attack telegraphs: splash, ring, dive, slam and dash.
-- **Combat and controls**
-  - Swing speed is synced with the gather animation.
-  - New on-screen auto-attack button.
-  - Lock rotation is reported to the server.
-  - The alive player with the most kills gets a skull icon.
+- **Keybinds by item** (Settings → Keys). Binds are now grouped into sections:
+  - By position in your bar (as before).
+  - By item: primary/secondary weapon, wall, spikes, windmill, pit trap / boost pad, mine / sapling, spawn pad
+    and age 7 item. Items you only ever have one of share a row and a key.
+  - Menus: Shop `B`, Tribes `T`, Game Menu (always on Esc). Pressing a menu key again closes it.
+  - Saved binds carry over, and a new default never takes a key you already use.
+- **Typing is safe.** Keys typed into a text field no longer fire hotkeys, and focusing a field lets go of held keys.
+- **Touch**
+  - Double-tap a bar slot to swing the weapon or place the item.
+  - Tap an owned hat or accessory in the shop to wear it.
+  - Multi-finger touches use the finger that's on the button.
+  - iPads are detected as touch devices.
+- **New settings:** Show Grid and Camera Lock. The skin colour is remembered between visits.
+- The shop is sorted by price.
 
 ### Menu & UI
 
-- **Main menu.** Rebuilt into views: Play, How to, Settings, Friends, Clan, Top.
-  - Skin colour picker popover.
-  - Reserved and permanent names.
-  - New region/server dropdowns: fill colour, "Full" tag, shield on members-only servers.
-  - The Invite button copies a `#region:name` link.
-- **New cards**
-  - Sign-in by email code or password.
-  - Player profiles with stats, periods, playtime and socials.
-  - Clans: create, invite, request, roles, kick, leave, disband.
-  - Friends: requests, presence, game invites.
-  - Generic confirm card.
-- **Top leaderboard.** Week/month/all-time boards for players and clans, plus a rotating "of the week" spotlight under the menu.
-- **Captcha.** The Cloudflare Turnstile check now runs in a modal, with retry and blocked states. Signed-in players skip it.
-- **In-game menu.** Opened with the Menu button or Esc; tabs for Settings, Friends, Clan and Report.
-  - Admins also get an admin menu: powers, size/damage/speed/health, spawn, teleport, give items.
-- **In-game leaderboard**
-  - Role and friend badges.
-  - Crab King killer badge.
-  - Skull for dead players.
-  - Clickable `[tribe:CLAN]` tags.
-  - Shown while the button is held.
-- **Settings**
-  - Ping display with colour tiers.
-  - Show FPS.
-  - Account preferences.
-  - Native resolution on by default, capped at 2x.
-- **Keybinds.** Fully rebindable (Settings → Keys); arrow keys always move.
-- **Mobile.** Joysticks (nipplejs) and automatic touch/mouse detection.
-- **Look.** Floating animated title; dynamic full-screen viewport instead of a letterboxed 1920×1080.
-  - Material Icons are served locally.
-  - `main.css` is now minified.
+- **Friends and clans on every site.** They now work on the sandbox too. Presence and invites say which site
+  (main game, sandbox, dev) a friend is on, and joining them there opens that site.
+- **Account preferences** (Settings): friend notifications, allow friend requests, allow clan invitations.
+  Saved on the API; turning one off also hides what's on screen.
+- **Clans**
+  - Owners can stop (and allow again) requests to join; a closed clan says "Not taking requests to join".
+  - Clearer errors for unclean clan names, closed clans and players who don't take invitations.
+- **Share links.** Profiles and clans have a **Copy link** (`/player/<name>`, `/clan/<tag>`). Opening one, or
+  `?profile=` / `?clan=`, shows that card when the page loads.
+- **Discord linking.** `?discord=<code>` (from a Discord bot) asks to link the signed-in account.
+- **Reports.** After reporting a player you can say what for: Bot, Hack, Autoheal or Abuse. Staff see the reason,
+  and the mod panel shows a hashed last IP instead of the real one.
+- **Clearer errors** for names (what it would show as in game, or not allowed), social handles (which one, and
+  whether it's the format or the words) and blocked friend requests.
+- **Server picking**
+  - The server you were auto-placed on is remembered (`moo_auto_server`), so a `#hash` naming it isn't treated as
+    your own choice.
+  - A selected server may drop off the list for a couple of reloads (a restart, a late heartbeat) before you're moved.
+  - Signed-in players move to a members server when one opens up, unless they picked their server themselves.
+  - A server that's restarting moves you to another one in the region.
+  - Signed-in players get two quiet retries when a connection fails before seeing an error.
+- **Join errors** for guests on a VPN and for players kicked a moment ago ("try again in ...").
+- **Look.** The title waves letter by letter. New sprites and `main.css` from the live 1.9.1 dump.
+- **Sharp text.** When the game canvas renders below the screen's pixel ratio (native resolution off, or a screen
+  above 2x), names and chat are drawn on `#textCanvas` at full resolution (up to 4x).
+- **Texture pack (dev).** On localhost and dev hosts, Settings has a *Texture pack (dev)* link: replace any hat,
+  accessory, weapon, animal or icon image with your own (click a tile, drop images, or import a zip), or export a
+  sample zip. Kept in your browser's IndexedDB only. The list is every image in those `public/img` folders.
 
 ### Accounts & networking
 
-- **FRVR SDK port.** Ported to TypeScript (`src/sdk-libs`) and built into `public/libs`. Ads are off by default (`src/config/ads.ts`).
-- **REST layer.** New in `src/net/api/`: `/join` tickets, `/account`, `/name`, `/profile`, `/clan/*`, `/top`, friends helpers.
-- **New packets**
-  - Client → server: `R` report, `A` admin command, `V` request player stats.
-  - Server → client: `W` boss telegraph, `F` player stats.
+- **Protocol.** The packet tables, cipher and packet masks are unchanged from 1.9.0. Only the build module changed;
+  live servers are joined with the game's own module (see `src/config/protocol.ts`). Built-in fallbacks: sandbox
+  `s16nx6` and production `s16nto`. The game regenerates these on every deploy, so they go stale quickly.
+- **Friends.** Presence and game invites carry the site (`env`). A friend request is announced once per sender
+  (`moo_friend_asks`, kept 30 days), and `/friends/allow` is told who the request is for.
 - **Changed packets**
-  - `a` players: positions, attributes and hidden lists.
-  - `I` animals: adds state, direction ×100 and a hidden list.
-  - `C` sends the numeric sid.
-  - `G` leaderboard: by sid, with roles, dead, crab-killer and clan/tribe tag lists.
-  - `K` gather: adds swing speed.
-  - Player data: adds aura, boss mode and clan.
-- **Cipher.** New full shuffled mode, an optional build salt, and an optional pinned mode with XOR masks.
-- **Connecting.** Join ticket (`tk:`) or captcha (`cf:`) in `?token=`, and a build id `?b=` off localhost.
-  - Close codes 4001–4004.
-- **Server browser.** Rewritten.
-  - Per-region ping, region names, members-only servers.
-  - Staff can join full servers.
-  - Selection lives in the URL hash.
-  - Password support removed.
+  - Client → server: `R sid 0 reason` adds a reason (1-based) to an earlier report.
+  - Client → server: `T [securityFlags, untrustedEvents]`, sent on live servers 5 seconds into a game and every
+    minute after. Flags: 1 userscript manager seen, 2 WebSocket patched, 4 canvas/WebGL/rAF patched, 8 paused in
+    the debugger. Real values are off by default (`telemetry` in `src/security/options.ts`), so it reports `T 0 0`.
+- **Input trust** (off by default, `trustedInputOnly` in `src/security/options.ts`). When on, game input ignores
+  script-made key, mouse, touch and click events and counts them, like the live client.
 
 ### Backend & tooling
 
-- **Game server.** Speaks the 1.9 packet formats.
-  - The Crab King and crabs are run by `backend/src/sim/game/falls.ts`.
-  - Admin commands live in `backend/src/sim/game/admin.ts` (`--admin` / `GAME_ADMIN=1`).
-  - Live player stats are streamed once a second.
-  - New spawns: sheep, boars, one yeti.
-  - Account support:
-    - Checks join tickets before the handshake.
-    - Locks signed-in players to their account name and clan.
-    - Sends leaderboard roles, dead players, and clan and tribe tags.
-    - Saves stats for each life.
-    - Forwards reports.
-    - Applies kicks, bans and shadows from the API.
-    - Staff see everyone on the minimap and can join full servers.
-  - Sends `B` with a reason before turning a player away, so "server is full" shows instead of "Invalid Connection".
-  - Counts down `Z` "Server restarting" on SIGTERM.
-  - Lock rotation (`K 0`) no longer switches auto-gather off.
-  - Item upgrades respect `allowAllUpgrades`.
-  - Chat is filtered.
-- **API.** Rebuilt from a bare server list into the full account API (see *The local account API* above).
-- **Extension build.** Redirects live CSS, images and fonts to `public/`.
-- **New assets.** Animal, hat and emerald weapon sprites, plus PWA/OG images.
-- **New `npm run diff:live` script.** Plus the `nipplejs` dependency.
-
-### Removed
-
-- The fixed key map (`src/input/bindings.ts`), the old `<select>` server list (`src/ui/menu/serverList.ts`) and `public/css/overrides.css`.
-- Party-key prompts, server passwords, the Krunker promo banner, and the old guide/setup cards.
+- **API**
+  - New: `POST /account/prefs`; `/account` returns `prefs`.
+  - New: `POST /clan/requests` (owner only); clans have `closed`.
+  - New: `GET|POST /discord/link`. For a Discord bot: `POST /internal/discord/code` with `{ discordId, discord }`
+    returns a code to send as `<site>/?discord=<code>` (valid 10 minutes), and
+    `GET /internal/discord/player?id=<discordId>` looks up a linked player.
+  - `/name` answers `censored` (with `shown`) or `unclean`; `/account/socials` answers `field` and `why`.
+  - `/clan/create` answers `unclean`; `/clan/request` answers `closed`; `/clan/invite` answers `no invites`;
+    `/friends/allow` answers 403 `closed` when the recipient takes no requests.
+  - `/join` answers `locked` (with `seconds`) for 5 minutes after a mod kick (`KICK_LOCK_SECONDS`), and `vpn` for
+    guests flagged by the optional `VPN_CHECK_URL`.
+  - Reports store their reason; the mod record shows it and hashes the IP (`IP_HASH_SALT`).
+  - `/player/<name>` and `/clan/<tag>` redirect to the game page with that card open (on the game servers too).
+- **Game server**
+  - Forwards report reasons to the API.
+  - Shuts down with the "Server is restarting - pick another" reason, which moves players to another server.
+  - Blanks guest names containing a word from the live client's own list, on top of the existing filter.
+  - Passes `/account/prefs` and `/discord/link` on to the API.
+- **Build.** The texture pack's list is generated from `public/img` at build time.
 
 ### Known gaps
 
-- The **Show Grid** checkbox is in the page, but nothing reads it yet.
+- **Production protocol fallback.** There's no 1.9.1 production dump yet; the built-in values are only used if the
+  game's own module can't be loaded.
+- **Discord linking** needs a Discord bot that calls `/internal/discord/code`; none is included.
+- **VPN check** only happens with `VPN_CHECK_URL` set.
 - **Emerald** unlocks at 20000 weapon XP for signed-in players only. The admin weapon command can also hand it to guests until they switch weapons.
 - **Clan raid kills** are always 0: the server doesn't track who killed whom yet.
 - **Anti-cheat flags** in the staff panel are always 0.

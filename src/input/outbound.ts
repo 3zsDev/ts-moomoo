@@ -68,6 +68,37 @@ export function selectItem(index: number, isWeapon = false): void {
   connection.send(ClientPacket.SelectToBuild, index, isWeapon);
 }
 
+const DOUBLE_TAP_MS = 400;
+let lastTap = { key: "", at: 0, wasHeld: false };
+
+export function tapBarItem(index: number, isWeapon = false): void {
+  const key = (isWeapon ? "w" : "i") + index;
+  const now = Date.now();
+  const me = state.me;
+
+  if (!(touch.usingTouch && lastTap.key === key && now - lastTap.at < DOUBLE_TAP_MS)) {
+    lastTap = { key, at: now, wasHeld: !isWeapon && !!me && me.buildIndex === index };
+    selectItem(index, isWeapon);
+    return;
+  }
+
+  const { wasHeld } = lastTap;
+  lastTap = { key: "", at: 0, wasHeld: false };
+  if (!me?.alive) return;
+
+  if (isWeapon) {
+    if (attack.held) return;
+    connection.send(ClientPacket.SendHit, 1, null);
+    setTimeout(() => {
+      if (!attack.held) connection.send(ClientPacket.SendHit, 0, null);
+    }, 150);
+  } else {
+    if (wasHeld) selectItem(index);
+    connection.send(ClientPacket.SendHit, 1, getAimAngle());
+    connection.send(ClientPacket.SendHit, 0, null);
+  }
+}
+
 export function toggleAutoGather(): void {
   connection.send(ClientPacket.AutoGather, 1);
 }

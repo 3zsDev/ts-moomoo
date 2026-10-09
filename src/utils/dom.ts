@@ -1,3 +1,5 @@
+import { trusted } from "../security/trusted";
+
 export interface ElementSpec {
   tag?: string;
   id?: string;
@@ -24,7 +26,9 @@ export function createElement(spec: ElementSpec): HTMLElement {
 
   for (const key in spec) {
     if (RESERVED_KEYS.has(key)) continue;
-    (el as unknown as Record<string, unknown>)[key] = spec[key];
+    const value = spec[key];
+    (el as unknown as Record<string, unknown>)[key] =
+      key === "onclick" && typeof value === "function" ? trusted(value as (event: Event) => void) : value;
   }
 
   if (spec.style) el.style.cssText = spec.style;
@@ -49,15 +53,23 @@ export function containsPoint(el: HTMLElement, pageX: number, pageY: number): bo
   );
 }
 
+const TOUCH_COORDS = ["screenX", "screenY", "clientX", "clientY", "pageX", "pageY"] as const;
+
 export function mousifyTouchEvent(event: TouchEvent): void {
-  const touch = event.changedTouches[0];
-  const target = event as unknown as Record<string, number>;
-  target.screenX = touch.screenX;
-  target.screenY = touch.screenY;
-  target.clientX = touch.clientX;
-  target.clientY = touch.clientY;
-  target.pageX = touch.pageX;
-  target.pageY = touch.pageY;
+  const touches = event.changedTouches;
+  const owner = event.currentTarget as Node | null;
+  let touch = touches[0];
+  for (let i = 0; i < touches.length; i++) {
+    if (owner?.contains?.(touches[i].target as Node)) {
+      touch = touches[i];
+      break;
+    }
+  }
+  for (const coord of TOUCH_COORDS) {
+    try {
+      Object.defineProperty(event, coord, { value: touch[coord], configurable: true });
+    } catch {}
+  }
 }
 
 export function hookTouchEvents(el: HTMLElement, skipPreventDefault = false): void {
@@ -104,11 +116,11 @@ export function hookTouchEvents(el: HTMLElement, skipPreventDefault = false): vo
     }
   };
 
-  el.addEventListener("touchstart", start, false);
-  el.addEventListener("touchmove", move, false);
-  el.addEventListener("touchend", end, false);
-  el.addEventListener("touchcancel", end, false);
-  el.addEventListener("touchleave", end as EventListener, false);
+  el.addEventListener("touchstart", trusted(start), false);
+  el.addEventListener("touchmove", trusted(move), false);
+  el.addEventListener("touchend", trusted(end), false);
+  el.addEventListener("touchcancel", trusted(end), false);
+  el.addEventListener("touchleave", trusted(end) as EventListener, false);
 }
 
 const missingElements = new Map<string, HTMLElement>();

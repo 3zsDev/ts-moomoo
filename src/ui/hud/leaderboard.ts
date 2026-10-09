@@ -1,4 +1,4 @@
-import { assetUrl } from "../../assetBase";
+import { imageUrl } from "../../render/sprites";
 import { friends, isStaff } from "../../net/api";
 import { createElement, removeAllChildren } from "../../utils/dom";
 import { kFormat } from "../../utils/math";
@@ -18,7 +18,6 @@ export interface ClanTag {
   gold: string;
 }
 
-// jc(): "[CLAN]" in gold, or "[tribe:CLAN]" with only the clan part gold
 export function formatClanTag(tribe: string | null | undefined, clan: string | null | undefined): ClanTag {
   if (!clan) return { text: tribe ? `[${tribe}]` : "", before: "", gold: "" };
   if (tribe === clan) return { text: `[${clan}]`, before: "", gold: `[${clan}]` };
@@ -110,7 +109,7 @@ export function refreshLeaderboard(
         }),
         isDead
           ? createElement({
-              tag: "img", class: "leaderScore leaderDead", src: assetUrl("img/icons/skull.png"), alt: "dead", title: "Dead",
+              tag: "img", class: "leaderScore leaderDead", src: imageUrl("icons/skull.png"), alt: "dead", title: "Dead",
             })
           : createElement({ class: "leaderScore", text: kFormat(score) || "0" }),
       ],

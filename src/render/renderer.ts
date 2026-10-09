@@ -1,6 +1,6 @@
 import { outlineWidth, paletteColors } from "../config";
-import { ctx } from "./canvas";
-import { camera, updateCamera } from "./camera";
+import { clearTextLayer, ctx } from "./canvas";
+import { camera, lockCameraToPlayer, updateCamera } from "./camera";
 import { interpolateEntities } from "./interpolation";
 import { renderGrid, renderBackground, renderMapBorders, renderWaterBodies } from "./layers/ground";
 import { collectGameObjects, renderGameObjects, renderProjectiles } from "./layers/objects";
@@ -9,10 +9,11 @@ import { renderOverlays } from "./layers/overlays";
 import { renderTelegraphs } from "./layers/telegraphs";
 import { renderMinimap } from "./minimap";
 
-// frame order follows 1.9: animals are drawn after the z0 players, telegraphs right above layer -1
 export function updateGame(delta: number): void {
+  clearTextLayer();
   updateCamera(delta);
   interpolateEntities(delta);
+  lockCameraToPlayer();
 
   renderBackground();
   renderWaterBodies(delta);

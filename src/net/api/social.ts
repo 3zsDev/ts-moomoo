@@ -1,10 +1,13 @@
 import { apiBase, restApiEnabled } from "../../environment";
+import { loadSetting, saveSetting } from "../../utils/storage";
 import { frvrAuth } from "./auth";
 
 const WATCH_INTERVAL = 5000;
 const BACKGROUND_INTERVAL = 20000;
 const OFFLINE_DEBOUNCE = 8000;
 const DEFAULT_SOCIAL_URL = "https://crucible.frvr.com/v1/social";
+const ASKS_KEY = "moo_friend_asks";
+const ASK_MEMORY = 30 * 24 * 60 * 60 * 1000;
 
 interface LiveEvent<T> {
   data?: T;
@@ -14,7 +17,7 @@ interface PresenceUpdate {
   userId?: string;
   presence?: string;
   gameId?: string;
-  metadata?: { server?: unknown };
+  metadata?: { server?: unknown; env?: unknown };
 }
 
 interface FrvrLive {
@@ -31,9 +34,12 @@ interface FrvrSocial {
   webClient?: { baseUrl?: string };
 }
 
+export type SiteEnv = string;
+
 interface Presence {
   server: string;
   playing: boolean;
+  env: SiteEnv;
 }
 
 export interface FriendRequest {
@@ -46,7 +52,7 @@ export interface FriendsState {
   incoming: FriendRequest[];
   outgoing: FriendRequest[];
   names: Record<string, string | null>;
-  online: Record<string, { server: string }>;
+  online: Record<string, { server: string; env: SiteEnv }>;
   loaded: boolean;
 }
 
@@ -54,6 +60,7 @@ export interface FriendInvite {
   from: string;
   name: string;
   server: string;
+  env: SiteEnv;
 }
 
 export interface IncomingRequest {
@@ -69,6 +76,7 @@ export interface PresenceNote {
   name: string;
   kind: PresenceKind;
   server: string;
+  env: SiteEnv;
 }
 
 export interface SocialHooks {
@@ -95,7 +103,24 @@ let liveHooked = false;
 let presenceSettled = false;
 let myPresence: Presence | null = null;
 const offlineTimers: Record<string, ReturnType<typeof setTimeout>> = {};
-const announcedRequests: Record<string, true> = {};
+let myEnv: SiteEnv = "";
+
+let askedBy: Record<string, Record<string, number>> = {};
+try {
+  askedBy = JSON.parse(loadSetting(ASKS_KEY) || "{}") || {};
+} catch {}
+
+// true the first time a sender's request is seen (per signed-in player); kept across reloads
+function firstAsk(sender: string): boolean {
+  const me = myId() ?? "";
+  const seen = (askedBy[me] ??= {});
+  const now = Date.now();
+  for (const id in seen) if (now - seen[id] > ASK_MEMORY) delete seen[id];
+  if (seen[sender]) return false;
+  seen[sender] = now;
+  saveSetting(ASKS_KEY, JSON.stringify(askedBy));
+  return true;
+}
 
 function social(): FrvrSocial | null {
   return (window as unknown as { FRVR?: { social?: FrvrSocial } }).FRVR?.social ?? null;
@@ -165,8 +190,11 @@ function applyPresence(update: PresenceUpdate | undefined): void {
   const previous = state.online[update.userId];
 
   if (update.presence === "online" && (!gameId() || update.gameId === gameId())) {
-    const server = update.metadata?.server;
-    state.online[update.userId] = { server: typeof server === "string" ? server : "" };
+    const { server, env } = update.metadata ?? {};
+    state.online[update.userId] = {
+      server: typeof server === "string" ? server : "",
+      env: typeof env === "string" ? env : "",
+    };
   } else {
     delete state.online[update.userId];
   }
@@ -177,7 +205,8 @@ function applyPresence(update: PresenceUpdate | undefined): void {
 function announce(id: string, kind: PresenceKind): void {
   void fetchNames([id]).then(() => {
     const name = state.names[id];
-    if (name) hooks.onPresence?.({ id, name, kind, server: state.online[id]?.server ?? "" });
+    const online = state.online[id];
+    if (name) hooks.onPresence?.({ id, name, kind, server: online?.server ?? "", env: online?.env ?? "" });
   });
 }
 
@@ -219,18 +248,29 @@ function hookLive(): void {
       applyPresence(event.data);
       emit();
     });
-    live.on("RECEIVE_GAME_INVITE", (event: LiveEvent<{ gameId?: string; senderId: string; lobbyId: string }>) => {
+    live.on("RECEIVE_GAME_INVITE", (event: LiveEvent<GameInviteEvent>) => {
       const invite = event.data;
       if (!invite || (gameId() && invite.gameId && invite.gameId !== gameId())) return;
+      const extra = invite.metadata || invite.payload || invite.data || {};
       void fetchNames([invite.senderId]).then(() => {
         hooks.onInvite?.({
           from: invite.senderId,
           name: state.names[invite.senderId] || "A friend",
           server: invite.lobbyId,
+          env: String(extra.env || ""),
         });
       });
     });
   } catch {}
+}
+
+interface GameInviteEvent {
+  gameId?: string;
+  senderId: string;
+  lobbyId: string;
+  metadata?: { env?: unknown };
+  payload?: { env?: unknown };
+  data?: { env?: unknown };
 }
 
 function connectLive(): void {
@@ -276,15 +316,16 @@ export function refreshFriends(): Promise<FriendsState> {
     .then(() => {
       emit();
       for (const entry of state.incoming) {
-        if (announcedRequests[entry.id]) continue;
-        announcedRequests[entry.id] = true;
-        hooks.onRequest?.({ id: entry.id, user: entry.user, name: state.names[entry.user] || "Someone" });
+        if (firstAsk(entry.user)) {
+          hooks.onRequest?.({ id: entry.id, user: entry.user, name: state.names[entry.user] || "Someone" });
+        }
       }
       return state;
     });
 }
 
-function allowRequest(): Promise<{ silent?: boolean }> {
+// the API checks the hourly limit and whether the recipient takes friend requests
+function allowRequest(to: string): Promise<{ silent?: boolean }> {
   let auth: string | null = null;
   try {
     auth = frvrAuth()?.getAccessToken() ?? null;
@@ -293,7 +334,7 @@ function allowRequest(): Promise<{ silent?: boolean }> {
   return fetch(`${apiBase()}/friends/allow`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ auth }),
+    body: JSON.stringify({ auth, to }),
   }).then((response) => {
     if (response.ok) return response.json();
     throw new SocialError(`allow ${response.status}`, response.status);
@@ -301,8 +342,9 @@ function allowRequest(): Promise<{ silent?: boolean }> {
 }
 
 export const friends = {
-  init(value: SocialHooks): void {
+  init(value: SocialHooks & { env?: SiteEnv }): void {
     hooks = value;
+    myEnv = value.env ?? "";
     setInterval(() => {
       if (myId() && !watchTimer) void refreshFriends();
     }, BACKGROUND_INTERVAL);
@@ -331,7 +373,7 @@ export const friends = {
   request(userId: string): Promise<FriendsState> {
     const me = myId();
     if (!me || userId === me) return Promise.reject(new SocialError("self"));
-    return allowRequest().then((result) => {
+    return allowRequest(userId).then((result) => {
       if (result.silent) {
         state.outgoing.push({ id: `local-${userId}`, user: userId });
         emit();
@@ -363,7 +405,7 @@ export const friends = {
   },
 
   setPresence(server: string, playing: boolean): void {
-    myPresence = { server: server || "", playing };
+    myPresence = { server: server || "", playing, env: myEnv };
     const live = social()?.live;
     if (!live || !myId()) return;
     try {
@@ -375,7 +417,7 @@ export const friends = {
     const live = social()?.live;
     if (!live || !server) return false;
     try {
-      live.sendGameInvite(userId, server, {});
+      live.sendGameInvite(userId, server, { env: myEnv });
       return true;
     } catch {
       return false;

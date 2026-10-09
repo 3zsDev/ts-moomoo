@@ -5,6 +5,6 @@ export {
   type ClanRole, type MyClan, type StaffRole,
 } from "./account";
 export * from "./endpoints";
-export { ApiError, apiGet, apiPost, withTimeout } from "./http";
+export { ApiError, apiGet, apiGetJson, apiPost, withTimeout } from "./http";
 export { joinTicket, SIGN_IN_REQUIRED } from "./join";
 export { friends, type FriendsState } from "./social";

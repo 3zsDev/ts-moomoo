@@ -1,7 +1,7 @@
 import { isRude, sanitize } from "../lib/filter.mjs";
 import { fail, ok, RateLimiter } from "../lib/http.mjs";
 import { read } from "../lib/periods.mjs";
-import { signedIn } from "./accounts.mjs";
+import { prefsOf, signedIn } from "./accounts.mjs";
 
 const CLAN_NAME = /^[A-Za-z0-9]{3,4}$/;
 const MAX_MEMBERS = 80;
@@ -31,6 +31,7 @@ function memberView(store, id, member) {
 export function clanView(store, clan, withPast) {
   const view = {
     name: clan.name,
+    closed: clan.closed || undefined,
     stats: {
       kills: clan.stats.kills,
       raidKills: clan.stats.raidKills,
@@ -128,7 +129,8 @@ export const clanRoutes = {
     if (clan) return fail(409, "in a clan");
 
     const name = typeof body.name === "string" ? sanitize(body.name).trim() : "";
-    if (!CLAN_NAME.test(name) || isRude(name)) return fail(400, "invalid");
+    if (!CLAN_NAME.test(name)) return fail(400, "invalid");
+    if (isRude(name)) return fail(400, "unclean");
     if (clanTaken(ctx.store, name)) return fail(409, "taken");
 
     const created = {
@@ -148,9 +150,19 @@ export const clanRoutes = {
 
     const target = ctx.store.clanByName(body.clan);
     if (!target) return fail(404, "not found");
+    if (target.closed) return fail(403, "closed");
     if (Object.keys(target.members).length >= MAX_MEMBERS) return fail(409, "full");
 
     if (!target.requests.includes(user.id)) target.requests.push(user.id);
+    return done(ctx);
+  },
+
+  "POST /clan/requests": async (ctx, { body }) => {
+    const { clan, rank, error } = await actor(ctx, body);
+    if (error) return error;
+    if (!clan || rank < RANK.owner) return fail(403, "rank");
+
+    clan.closed = !body.open;
     return done(ctx);
   },
 
@@ -225,6 +237,7 @@ export const clanRoutes = {
     const target = ctx.store.userByName(body.name);
     if (!target) return fail(404, "no player");
     if (target.clan) return fail(409, "in a clan");
+    if (!prefsOf(target).clanInvites) return fail(403, "no invites");
     if (Object.keys(clan.members).length >= MAX_MEMBERS) return fail(409, "full");
 
     if (!target.invites.some((invite) => invite.clan === clan.key)) {

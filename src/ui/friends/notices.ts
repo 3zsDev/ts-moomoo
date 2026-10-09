@@ -1,8 +1,8 @@
 import { serverBrowser } from "../../game/session";
-import { friends } from "../../net/api";
+import { account, friends } from "../../net/api";
 import type { FriendInvite, IncomingRequest, PresenceNote } from "../../net/api/social";
 import { byId, createElement, removeAllChildren } from "../../utils/dom";
-import { joinFriendServer, serverLabel } from "./friendList";
+import { canJoinFriend, friendElsewhere, joinFriend, serverLabel } from "./friendList";
 
 const TOAST_TIME = 15000;
 
@@ -11,6 +11,7 @@ let toastRequest: IncomingRequest | null = null;
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function showFriendRequest(request: IncomingRequest): void {
+  if (!account.prefs.friendNotifs || !account.prefs.friendRequests) return;
   toastRequest = request;
   byId("friendToastText").textContent = `${request.name} wants to be friends`;
   toast.style.display = "block";
@@ -22,9 +23,9 @@ const banner = byId("inviteBanner");
 let invite: FriendInvite | null = null;
 
 export function showGameInvite(next: FriendInvite): void {
-  if (!next.server) return;
+  if (!next.server || !account.prefs.friendNotifs) return;
   invite = next;
-  byId("inviteText").textContent = `${next.name} invited you to ${serverLabel(next.server)}`;
+  byId("inviteText").textContent = `${next.name} invited you to ${serverLabel(next.server, next.env)}`;
   banner.style.display = "block";
 }
 
@@ -33,6 +34,7 @@ interface Note {
   name?: string;
   kind?: PresenceNote["kind"];
   server: string | null;
+  env?: string;
   notice?: boolean;
 }
 
@@ -44,7 +46,9 @@ function noteText(note: Note): string {
   if (note.text) return note.text;
   if (note.kind === "offline") return `${note.name} has gone offline`;
   if (note.kind === "joined") {
-    return `${note.name} has joined ${note.server === serverBrowser.key() ? "your game" : serverLabel(note.server ?? "")}`;
+    const server = note.server ?? "";
+    const yours = server === serverBrowser.key() && !friendElsewhere(server, note.env ?? "");
+    return `${note.name} has joined ${yours ? "your game" : serverLabel(server, note.env)}`;
   }
   return `${note.name} is now online`;
 }
@@ -58,7 +62,8 @@ function nextNote(): void {
   const line = createElement({ class: "friendPrompt" + (note.notice ? " notice" : ""), parent: notes });
   createElement({ tag: "span", text: noteText(note), parent: line });
 
-  const joinable = Boolean(note.server && note.server !== serverBrowser.key());
+  const server = note.server ?? "";
+  const joinable = canJoinFriend(server, note.env) && (server !== serverBrowser.key() || friendElsewhere(server, note.env ?? ""));
   if (joinable) {
     createElement({
       tag: "a",
@@ -66,7 +71,7 @@ function nextNote(): void {
       parent: line,
       onclick: () => {
         nextNote();
-        joinFriendServer(note.server!);
+        joinFriend(server, note.env);
       },
     });
   }
@@ -87,7 +92,8 @@ function pushNote(note: Note): void {
 }
 
 export function showPresenceNote(note: PresenceNote): void {
-  pushNote({ name: note.name, kind: note.kind, server: note.server });
+  if (!account.prefs.friendNotifs) return;
+  pushNote({ name: note.name, kind: note.kind, server: note.server, env: note.env });
 }
 
 export function showServerNotice(text: string): void {
@@ -105,7 +111,7 @@ export function bindNotices(): void {
 
   byId("inviteJoin").onclick = () => {
     banner.style.display = "none";
-    if (invite) joinFriendServer(invite.server);
+    if (invite) joinFriend(invite.server, invite.env);
   };
   byId("inviteDismiss").onclick = () => {
     banner.style.display = "none";

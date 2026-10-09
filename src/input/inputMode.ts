@@ -9,7 +9,8 @@ let mobile: boolean | null = null;
 export function isMobileDevice(): boolean {
   if (mobile === null) {
     const agent = navigator.userAgent || navigator.vendor || "";
-    mobile = MOBILE_UA.test(agent);
+    const iPad = /Macintosh/.test(navigator.userAgent || "") && (navigator.maxTouchPoints || 0) > 1;
+    mobile = MOBILE_UA.test(agent) || iPad;
   }
   return mobile;
 }

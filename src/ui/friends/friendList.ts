@@ -1,3 +1,4 @@
+import { SITE_ENV_NAMES, siteEnv, siteEnvUrl, type SiteEnv } from "../../environment";
 import { serverBrowser } from "../../game/session";
 import { account, fetchProfile, friends, type FriendsState } from "../../net/api";
 import { myId as myFriendId } from "../../net/api/social";
@@ -15,10 +16,41 @@ const listHolder = byId("friendList");
 
 type FriendAction = [label: string, run: () => void, kind?: string, icon?: string];
 
-export function serverLabel(key: string): string {
+function regionLabel(key: string): string {
   const [region, name] = String(key || "").split(":");
   if (!region) return "";
   return serverBrowser.regionName(region) + (name ? ` ${name}` : "");
+}
+
+export function friendElsewhere(key: string, env: string): boolean {
+  return otherEnv(key, env) !== null;
+}
+
+function otherEnv(key: string, env: string): string | null {
+  if (env) return env !== siteEnv() ? env : null;
+  const [region, name] = String(key || "").split(":");
+  const here = serverBrowser.serversIn(region).some((entry) => entry.name == name);
+  return region && serverBrowser.regions().length && !here ? "other" : null;
+}
+
+export function serverLabel(key: string, env = ""): string {
+  const other = otherEnv(key, env);
+  return other ? SITE_ENV_NAMES[other as SiteEnv] || "another server" : regionLabel(key);
+}
+
+export function canJoinFriend(key: string, env = ""): boolean {
+  const other = otherEnv(key, env);
+  return Boolean(key) && (!other || Boolean(siteEnvUrl(other)));
+}
+
+export function joinFriend(key: string, env = ""): void {
+  const other = otherEnv(key, env);
+  if (!other) {
+    joinFriendServer(key);
+    return;
+  }
+  const url = siteEnvUrl(other);
+  if (url) window.open(`${url}/#${key}`, "_blank");
 }
 
 export function joinFriendServer(key: string, confirmed = false): void {
@@ -27,7 +59,7 @@ export function joinFriendServer(key: string, confirmed = false): void {
   const alive = isAlive();
 
   if (alive && !confirmed) {
-    confirmAction(`Leave this game to join ${serverLabel(key)}?`, "Leave", () => joinFriendServer(key, true));
+    confirmAction(`Leave this game to join ${regionLabel(key)}?`, "Leave", () => joinFriendServer(key, true));
     return;
   }
 
@@ -37,7 +69,7 @@ export function joinFriendServer(key: string, confirmed = false): void {
     startPlay();
     return;
   }
-  status.textContent = `Selected ${serverLabel(key)}: press play to join`;
+  status.textContent = `Selected ${regionLabel(key)}: press play to join`;
 }
 
 function track(request: Promise<unknown>, done?: string): void {
@@ -46,7 +78,10 @@ function track(request: Promise<unknown>, done?: string): void {
       status.textContent = done || "";
     })
     .catch((error: { status?: number }) => {
-      status.textContent = error?.status === 409 ? "Already sent" : "Something went wrong";
+      status.textContent =
+        error?.status === 409 ? "Already sent"
+        : error?.status === 403 ? "That player isn't taking friend requests"
+        : "Something went wrong";
     });
 }
 
@@ -57,8 +92,9 @@ function friendRow(
   if (!name) return;
   const row = createElement({ class: "friendRow", parent });
   createElement({ class: "friendDot" + (online ? " online" : ""), parent: row });
-  createElement({ tag: "span", class: "friendName", text: name, parent: row, onclick: () => openProfile(name) });
-  if (note) createElement({ tag: "span", class: "friendNote", text: note, parent: row });
+  const who = createElement({ class: "friendWho", parent: row });
+  createElement({ tag: "span", class: "friendName", text: name, parent: who, onclick: () => openProfile(name) });
+  if (note) createElement({ tag: "span", class: "friendNote", text: note, parent: who });
   if (server) appendPlayerCount(row, server, true);
 
   for (const [label, run, kind, icon] of actions) {
@@ -106,13 +142,17 @@ export function renderFriends(state: FriendsState): void {
 
   for (const id of sorted) {
     const presence = state.online[id];
-    const note = presence ? (presence.server ? serverLabel(presence.server) : "on the menu") : "";
+    const note = presence ? (presence.server ? serverLabel(presence.server, presence.env) : "on the menu") : "";
     const [region, name] = String(presence?.server || "").split(":");
-    const server = serverBrowser.serversIn(region).find((entry) => entry.name == name);
+    const elsewhere = presence ? otherEnv(presence.server, presence.env) : null;
+    const server = presence && !elsewhere ? serverBrowser.serversIn(region).find((entry) => entry.name == name) : undefined;
 
     const actions: FriendAction[] = [];
-    if (presence?.server && !(isAlive() && presence.server === connectedServerKey())) {
-      actions.push(["Join", () => joinFriendServer(presence.server), "go"]);
+    if (
+      presence && canJoinFriend(presence.server, presence.env) &&
+      !(isAlive() && presence.server === connectedServerKey() && !elsewhere)
+    ) {
+      actions.push(["Join", () => joinFriend(presence.server, presence.env), "go"]);
     }
     if (presence && isConnected() && serverBrowser.key()) {
       actions.push(["Invite", () => {

@@ -20,7 +20,7 @@ const localSite = JSON.stringify({
 }).replace(/[<>]/g, "");
 const INJECT_HEAD = serverConfig.wsOnly ? "" : `<script>window.__MOOMOO_LOCAL__=${localSite};</script>`;
 
-const API_ROUTE = /^\/(join|account|account\/socials|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow)$/;
+const API_ROUTE = /^\/(join|account|account\/socials|account\/prefs|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow|discord\/link)$/;
 const MODERATION_ACTIONS = new Set(["kick", "ban", "shadow", "clear"]);
 
 function selfServerList(): unknown[] {
@@ -282,7 +282,7 @@ async function shutdown(seconds: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
-  game.kickAll("Server restarting");
+  game.kickAll("Server is restarting - pick another");
   game.stop();
   http.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();

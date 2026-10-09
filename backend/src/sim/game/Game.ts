@@ -1,4 +1,5 @@
 import { censor, isRude, sanitize } from "../../../../api/lib/filter.mjs";
+import { liveNameBlocked } from "./nameFilter";
 import { serverConfig } from "../../config";
 import { reportLife, reportPlayer, type ReportTarget, type Session } from "../../net/api";
 import type { SimClient } from "../client";
@@ -344,7 +345,7 @@ export class Game implements SimHost {
 
     let name = sanitize(String(data.name ?? "")).trim();
     if (account?.name) name = account.name;
-    else if (isRude(name) || this.reservedNames.has(name.toLowerCase())) name = "unknown";
+    else if (isRude(name) || liveNameBlocked(name) || this.reservedNames.has(name.toLowerCase())) name = "unknown";
     player.clan = account?.clan ?? null;
 
     this.spawnPlayer(player, name, Number(data.skin) || 0, !!data.moofoll);
@@ -446,7 +447,7 @@ export class Game implements SimHost {
       case ClientPacket.ReportPlayer: {
         const target = this.findPlayer(Number(args[0]));
         if (target && target !== player && this.clientsByPlayer.has(target)) {
-          void this.report(player, target, Number(args[1]) || 0);
+          void this.report(player, target, Number(args[1]) || 0, Number(args[2]) || 0);
         }
         return;
       }
@@ -639,9 +640,9 @@ export class Game implements SimHost {
     return { account: session?.account?.id ?? null, did: session?.did ?? null, name: player.name };
   }
 
-  private async report(reporter: Player, target: Player, action: number): Promise<void> {
+  private async report(reporter: Player, target: Player, action: number, reason: number): Promise<void> {
     const staffAction = this.isStaff(this.sessions.get(reporter)) ? action : 0;
-    const verdict = await reportPlayer(this.reportTarget(reporter), this.reportTarget(target), staffAction);
+    const verdict = await reportPlayer(this.reportTarget(reporter), this.reportTarget(target), staffAction, reason);
     if (!verdict) return;
 
     const session = this.sessions.get(target);

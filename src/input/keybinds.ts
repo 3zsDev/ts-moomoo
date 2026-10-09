@@ -1,15 +1,26 @@
+import { trusted } from "../security/trusted";
 import { loadSetting, saveSetting } from "../utils/storage";
 
 export type ActionId =
   | "moveUp" | "moveLeft" | "moveDown" | "moveRight"
   | "attack" | "autoGather" | "food" | "lockDir" | "mapPing" | "mapMarker"
-  | `slot${number}`;
+  | `slot${number}` | `kind_${string}` | `menu_${MenuId}`;
+
+export type MenuId = "store" | "tribe" | "game";
+
+export type ItemKind = { weapon: number; groups?: undefined } | { weapon?: undefined; groups: number[] };
 
 export interface KeyAction {
   id: ActionId;
   label: string;
   key: number;
   slot?: number;
+  kind?: ItemKind;
+  menu?: MenuId;
+  always?: string;
+  was?: ActionId[];
+  note?: string;
+  section?: string;
 }
 
 const STORAGE_KEY = "moo_keybinds";
@@ -27,7 +38,41 @@ export const KEY_ACTIONS: KeyAction[] = [
   { id: "mapMarker", label: "Add Map Marker", key: 67 },
 ];
 for (let slot = 0; slot < 9; slot++) {
-  KEY_ACTIONS.push({ id: `slot${slot}`, label: `Select Item ${slot + 1}`, key: 49 + slot, slot });
+  KEY_ACTIONS.push({
+    id: `slot${slot}`, label: `Select Item ${slot + 1}`, key: 49 + slot, slot,
+    section: "By position in your bar (moves as you gain items)",
+  });
+}
+
+const KIND_ACTIONS: [name: string, label: string, kind: ItemKind, was?: string[], note?: string][] = [
+  ["primary", "Primary Weapon", { weapon: 0 }],
+  ["secondary", "Secondary Weapon", { weapon: 1 }],
+  ["walls", "Wall", { groups: [1] }],
+  ["spikes", "Spikes", { groups: [2] }],
+  ["mill", "Windmill", { groups: [3] }],
+  ["trap", "Pit Trap / Boost Pad", { groups: [5, 6] }, ["booster"]],
+  ["mine", "Mine / Sapling", { groups: [4, 11] }, ["sapling"]],
+  ["spawn", "Spawn Pad", { groups: [10] }],
+  [
+    "turret", "Age 7 Item", { groups: [7, 8, 9, 12, 13] }, ["watchtower", "buff", "blocker", "teleporter"],
+    "Turret, Platform, Healing Pad,\nBlocker or Teleporter",
+  ],
+];
+for (const [name, label, kind, was, note] of KIND_ACTIONS) {
+  KEY_ACTIONS.push({
+    id: `kind_${name}`, label, key: 0, kind, note,
+    was: (was ?? []).map((old) => `kind_${old}` as const),
+    section: "By item (always the same item)",
+  });
+}
+
+const MENU_ACTIONS: [menu: MenuId, label: string, key: number, always?: string][] = [
+  ["store", "Shop", 66],
+  ["tribe", "Tribes", 84],
+  ["game", "Game Menu", 0, "Esc"],
+];
+for (const [menu, label, key, always] of MENU_ACTIONS) {
+  KEY_ACTIONS.push({ id: `menu_${menu}`, label, key, menu, always, section: "Menus (press again to close)" });
 }
 
 const MOVE_VECTORS: Partial<Record<ActionId, [x: number, y: number]>> = {
@@ -85,10 +130,15 @@ function load(): void {
     stored = JSON.parse(loadSetting(STORAGE_KEY) || "{}") || {};
   } catch {}
 
+  const taken = new Set<unknown>(Object.values(stored).filter((value) => typeof value === "number"));
+
   bound = {};
   for (const action of KEY_ACTIONS) {
-    const value = stored[action.id];
-    bound[action.id] = typeof value === "number" && !RESERVED_KEYS.has(value) ? value : action.key;
+    let value = stored[action.id];
+    for (const old of action.was ?? []) if (!value && typeof stored[old] === "number") value = stored[old];
+
+    if (typeof value === "number" && !RESERVED_KEYS.has(value)) bound[action.id] = value;
+    else bound[action.id] = stored[action.id] === undefined && taken.has(action.key) ? 0 : action.key;
   }
   rebuild();
 }
@@ -109,8 +159,8 @@ export function movementKeys(): Record<number, [number, number]> {
   return moveKeys;
 }
 
-export function boundKeyName(id: ActionId): string {
-  return keyName(bound[id] ?? 0);
+export function boundKeyName(action: KeyAction): string {
+  return (!bound[action.id] && action.always) || keyName(bound[action.id] ?? 0);
 }
 
 export function capturingAction(): KeyAction | null {
@@ -159,4 +209,4 @@ function onCaptureKey(event: KeyboardEvent): void {
 }
 
 load();
-window.addEventListener("keydown", onCaptureKey, true);
+window.addEventListener("keydown", trusted(onCaptureKey), true);

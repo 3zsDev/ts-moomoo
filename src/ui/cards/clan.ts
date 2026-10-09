@@ -7,6 +7,7 @@ import { kFormat } from "../../utils/math";
 import { openAccountCard } from "../account/accountCard";
 import { confirmAction } from "./confirm";
 import { openProfileFromClan } from "./profile";
+import { copyLinkButton } from "./shareLink";
 
 const MAX_MEMBERS = 80;
 const RANK: Record<ClanRole, number> = { member: 0, officer: 1, owner: 2 };
@@ -145,7 +146,11 @@ function renderClan(data: { clan: Clan; role?: ClanRole; requests?: string[] }):
     ["Kills this month", count(periods.month?.kills)],
   ], 2);
 
-  if (myRank === undefined && auth.isVerified() && !account.clan) {
+  const shareLink = (parent: HTMLElement) => copyLinkButton(parent, `/clan/${encodeURIComponent(clan.name)}`, card.status);
+
+  if (myRank === undefined && auth.isVerified() && !account.clan && clan.closed) {
+    createElement({ class: "menuText", text: "Not taking requests to join.", parent: card.body });
+  } else if (myRank === undefined && auth.isVerified() && !account.clan) {
     const row = createElement({ class: "clanInputRow", parent: card.body });
     button(row, "Ask to join", () => reportResult(authedPost("/clan/request", { clan: clan.name }), "Asked to join"), "go");
   }
@@ -199,7 +204,10 @@ function renderClan(data: { clan: Clan; role?: ClanRole; requests?: string[] }):
     }
   }
 
-  if (myRank === undefined) return;
+  if (myRank === undefined) {
+    shareLink(createElement({ class: "clanInputRow", parent: card.body }));
+    return;
+  }
 
   if (clan.past?.length) {
     section("Past members - kills added");
@@ -224,6 +232,11 @@ function renderClan(data: { clan: Clan; role?: ClanRole; requests?: string[] }):
 
   const row = createElement({ class: "clanInputRow", parent: card.body });
   const lastOne = clan.members.length === 1;
+  if (myRank === 2) {
+    button(row, clan.closed ? "Allow requests to join" : "Stop requests to join", () => {
+      act(authedPost("/clan/requests", { open: Boolean(clan.closed) }), clan.closed ? "Open to requests" : "Closed to requests");
+    });
+  }
   if (myRank < 2 || lastOne) {
     button(row, "Leave clan", () => {
       const message = lastOne
@@ -238,6 +251,7 @@ function renderClan(data: { clan: Clan; role?: ClanRole; requests?: string[] }):
       });
     }, "quiet");
   }
+  shareLink(row);
 }
 
 export function openClanByName(name: string): void {

@@ -1,5 +1,5 @@
 import { connectToServer, joinGame, serverBrowser } from "../../game/session";
-import { isDev, isSandbox } from "../../environment";
+import { isDev, isSandbox, serverListUrl } from "../../environment";
 import { auth, isStaff, SIGN_IN_REQUIRED, withTimeout } from "../../net/api";
 import { hasCaptchaToken, isCaptchaRequired } from "../../net/turnstile";
 import { createElement, hookTouchEvents } from "../../utils/dom";
@@ -48,6 +48,28 @@ export function handleFullServer(): void {
   );
 }
 
+const SERVER_RESTARTING = "Server is restarting - pick another";
+function findAnotherServer(restarting: boolean): void {
+  const gone = serverBrowser.selected();
+  const name = gone ? gone.name : "That server";
+  showMenuStatus("Finding another server...");
+  void serverBrowser
+    .load(serverListUrl())
+    .catch(() => {})
+    .then(() => {
+      if (!restarting && serverBrowser.selected()) {
+        showMenuNotice("Couldn't reach that server. Press play to try again.");
+        return;
+      }
+      const moved = serverBrowser.moveOff();
+      showMenuNotice(
+        moved
+          ? `${name} has closed - switched you to ${moved.name}. Press play.`
+          : `${name} has closed and nothing else in ${serverBrowser.regionName(serverBrowser.selectedRegion())} has room. Try another region.`,
+      );
+    });
+}
+
 const DISCONNECT_NOTICES: Record<string, string> = {
   disconnected: "Disconnected. Press play to rejoin.",
   "Socket error": "Couldn't reach that server. Press play to try again.",
@@ -55,13 +77,17 @@ const DISCONNECT_NOTICES: Record<string, string> = {
   "Invalid Connection": "Could not verify the connection. Press play to try again.",
 };
 
-export function handleDisconnect(reason: string): void {
+export function handleDisconnect(reason: string, reachedServer = true): void {
   if (reason === "Game updated - please reload") {
     showMenuStatus(`${reason} `, true);
     return;
   }
   if (reason.toLowerCase() === "server is full") {
     handleFullServer();
+    return;
+  }
+  if (reason === SERVER_RESTARTING || (!reachedServer && reason === "Socket error")) {
+    findAnotherServer(reason === SERVER_RESTARTING);
     return;
   }
   if (reason === SIGN_IN_REQUIRED) {

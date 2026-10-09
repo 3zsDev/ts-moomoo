@@ -1,4 +1,4 @@
-import { assetUrl } from "../assetBase";
+import { imageUrl } from "../render/sprites";
 import { accessories, hats, type Cosmetic } from "../data/cosmetics";
 import { state } from "../game/state";
 import { connection } from "../net/Connection";
@@ -51,7 +51,10 @@ export function refreshStore(): void {
   const owned = isAccessoryTab ? state.me.tails : state.me.skins;
   const order = catalogue
     .map((cosmetic, index) => ({ cosmetic, index }))
-    .sort((a, b) => Number(Boolean(a.cosmetic.earned)) - Number(Boolean(b.cosmetic.earned)) || a.index - b.index);
+    .sort((a, b) =>
+      Number(Boolean(a.cosmetic.earned)) - Number(Boolean(b.cosmetic.earned)) ||
+      (a.cosmetic.price || 0) - (b.cosmetic.price || 0) ||
+      a.index - b.index);
 
   for (const { cosmetic } of order) {
     if (cosmetic.dontSell && !(cosmetic.earned && owned[cosmetic.id])) continue;
@@ -70,19 +73,20 @@ function buildTile(cosmetic: Cosmetic, isAccessory: boolean): HTMLElement {
   });
   hookTouchEvents(tile, true);
 
+  const owned = isAccessory ? me.tails[cosmetic.id] : me.skins[cosmetic.id];
+  const equipped = (isAccessory ? me.tailIndex : me.skinIndex) === cosmetic.id;
+  if (owned) equipOnTap(tile, cosmetic.id, isAccessory);
+
   const folder = isAccessory ? "accessories/access_" : "hats/hat_";
 
   const suffix = cosmetic.topSprite ? "_p" : "";
   createElement({
     tag: "img",
     class: "hatPreview",
-    src: assetUrl(`img/${folder}${cosmetic.id}${suffix}.png`),
+    src: imageUrl(`${folder}${cosmetic.id}${suffix}.png`),
     parent: tile,
   });
   createElement({ tag: "span", text: cosmetic.name, parent: tile });
-
-  const owned = isAccessory ? me.tails[cosmetic.id] : me.skins[cosmetic.id];
-  const equipped = (isAccessory ? me.tailIndex : me.skinIndex) === cosmetic.id;
 
   if (!owned) {
     createElement({
@@ -107,6 +111,23 @@ function buildTile(cosmetic: Cosmetic, isAccessory: boolean): HTMLElement {
   }
 
   return tile;
+}
+
+function equipOnTap(tile: HTMLElement, id: number, isAccessory: boolean): void {
+  let startX: number | undefined;
+  let startY = 0;
+  tile.addEventListener("touchstart", (event) => {
+    startX = event.changedTouches[0].clientX;
+    startY = event.changedTouches[0].clientY;
+  }, { passive: true });
+  tile.addEventListener("touchend", (event) => {
+    const end = event.changedTouches[0];
+    const moved = startX === undefined || Math.abs(end.clientX - startX) > 10 || Math.abs(end.clientY - startY) > 10;
+    startX = undefined;
+    const me = state.me;
+    if (moved || !me || (isAccessory ? me.tailIndex : me.skinIndex) === id) return;
+    equipCosmetic(id, isAccessory);
+  }, { passive: true });
 }
 
 export function equipCosmetic(id: number, isAccessory: boolean): void {

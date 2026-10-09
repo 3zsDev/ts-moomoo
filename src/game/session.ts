@@ -2,10 +2,11 @@ import { config, endpoints } from "../config";
 import { isLocal, localSocketUrl, serverListUrl } from "../environment";
 import { connection } from "../net/Connection";
 import { createHandlers, markPingSent } from "../net/handlers";
-import { joinTicket } from "../net/api";
+import { auth, joinTicket } from "../net/api";
 import { trackGameStart } from "../net/api/auth";
 import { getCaptchaToken, resetTurnstile } from "../net/turnstile";
 import { BUILD_ID, ClientPacket, loadProtocol } from "../net/protocol";
+import { securityFlags, untrustedEventCount } from "../security";
 import { ServerBrowser } from "../net/ServerBrowser";
 import { clearTelegraphs } from "../render/layers/telegraphs";
 import { loadSetting, saveSetting } from "../utils/storage";
@@ -22,6 +23,28 @@ export const serverBrowser = new ServerBrowser(endpoints.serverDomain);
 
 let joined = false;
 let pingTimer: ReturnType<typeof setTimeout> | undefined;
+let reachedServer = false;
+let telemetryStart: ReturnType<typeof setTimeout> | undefined;
+let telemetryTimer: ReturnType<typeof setInterval> | undefined;
+let retries = 0;
+const MAX_RETRIES = 2;
+
+function retryConnect(error: string): boolean {
+  if ((error !== "Socket error" && error !== "disconnected") || !auth.isVerified() || retries >= MAX_RETRIES) return false;
+  retries++;
+  connection.close();
+  showMenuStatus("Connecting...");
+  setTimeout(() => {
+    void serverBrowser
+      .load(serverListUrl())
+      .catch(() => {})
+      .then(() => {
+        if (!serverBrowser.selected()) serverBrowser.moveOff();
+        void connectToServer();
+      });
+  }, 600 * retries);
+  return true;
+}
 
 export const followBonus = loadSetting("moofoll");
 
@@ -68,9 +91,12 @@ export async function connectToServer(): Promise<void> {
     url,
     (error) => {
       if (error) {
+        if (!reachedServer && retryConnect(error)) return;
         returnToMenu(error);
         return;
       }
+      reachedServer = true;
+      retries = 0;
       startPingLoop();
       joinGame();
     },
@@ -93,7 +119,26 @@ export function joinGame(): void {
   });
 }
 
+function sendTelemetry(): void {
+  if (connection.isReady() && connection.isPinned()) {
+    connection.send(ClientPacket.Telemetry, securityFlags(), untrustedEventCount());
+  }
+}
+
+function startTelemetry(): void {
+  if (telemetryTimer) return;
+  telemetryStart = setTimeout(sendTelemetry, 5000);
+  telemetryTimer = setInterval(sendTelemetry, 60000);
+}
+
+function stopTelemetry(): void {
+  clearTimeout(telemetryStart);
+  clearInterval(telemetryTimer);
+  telemetryStart = telemetryTimer = undefined;
+}
+
 function onSetupGame(): void {
+  startTelemetry();
   hideMenu();
   ui.gameUI.style.display = "block";
   ui.diedText.style.display = "none";
@@ -129,12 +174,16 @@ function onDeath(): void {
 }
 
 export function returnToMenu(reason: string): void {
+  const reached = reachedServer;
   leaveSession();
-  handleDisconnect(reason);
+  retries = 0;
+  handleDisconnect(reason, reached);
 }
 
 export function leaveSession(): void {
   joined = false;
+  reachedServer = false;
+  stopTelemetry();
   stopPingLoop();
   connection.close();
   resetTurnstile();

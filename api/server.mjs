@@ -8,6 +8,7 @@ import { clientIp, internalHeaders, isInternal, readBody, sendJson } from "./lib
 import { Store } from "./lib/store.mjs";
 import { accountRoutes } from "./routes/accounts.mjs";
 import { clanRoutes } from "./routes/clans.mjs";
+import { discordRoutes } from "./routes/discord.mjs";
 import { gameRoutes } from "./routes/game.mjs";
 import { modRoutes } from "./routes/mod.mjs";
 import { topRoutes } from "./routes/top.mjs";
@@ -65,7 +66,7 @@ function notifyServers(route, body) {
 
 const ctx = { store, servers, notifyServers };
 
-const routes = { ...gameRoutes, ...accountRoutes, ...clanRoutes, ...topRoutes, ...modRoutes };
+const routes = { ...gameRoutes, ...accountRoutes, ...clanRoutes, ...topRoutes, ...modRoutes, ...discordRoutes };
 
 function loadRegistry() {
   const raw = JSON.parse(readFileSync(path.join(root, "servers.json"), "utf8"));
@@ -105,7 +106,24 @@ function applyCors(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+function shareLinkRedirect(pathname) {
+  const match = /^\/(player|clan)\/([^/]+)\/?$/.exec(pathname);
+  if (!match) return null;
+  try {
+    return `/?${match[1] === "player" ? "profile" : "clan"}=${encodeURIComponent(decodeURIComponent(match[2]))}`;
+  } catch {
+    return null;
+  }
+}
+
 function serveStatic(req, res, pathname) {
+  const redirect = shareLinkRedirect(pathname);
+  if (redirect) {
+    res.writeHead(302, { Location: redirect, "Cache-Control": "no-store" });
+    res.end();
+    return;
+  }
+
   if (!existsSync(PUBLIC_DIR)) {
     sendJson(res, 404, { error: "client not built", hint: "run: npm run build" });
     return;

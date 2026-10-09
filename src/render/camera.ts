@@ -6,6 +6,7 @@ import { view } from "./canvas";
 export const camera = {
   left: 0,
   top: 0,
+  locked: false,
 };
 
 export function updateCamera(delta: number): void {
@@ -27,6 +28,15 @@ export function updateCamera(delta: number): void {
     }
   }
 
+  camera.left = state.cameraX - view.width / 2;
+  camera.top = state.cameraY - view.height / 2;
+}
+
+export function lockCameraToPlayer(): void {
+  const me = state.me;
+  if (!camera.locked || !me?.alive) return;
+  state.cameraX = me.x;
+  state.cameraY = me.y;
   camera.left = state.cameraX - view.width / 2;
   camera.top = state.cameraY - view.height / 2;
 }

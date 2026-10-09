@@ -1,5 +1,6 @@
 import { state } from "../game/state";
 import { canvas } from "../render/canvas";
+import { trusted } from "../security/trusted";
 import { findById } from "../utils/dom";
 import { mouse } from "./aim";
 import { isMobileDevice, setUsingTouch } from "./inputMode";
@@ -23,23 +24,23 @@ export function installMouseHandlers(): void {
     if (overlay) overlay.style.display = "block";
   }
 
-  window.addEventListener("mousemove", (event) => {
+  window.addEventListener("mousemove", trusted((event: MouseEvent) => {
     mouse.x = event.clientX;
     mouse.y = event.clientY;
     if (event.target === overlay) setUsingTouch(false);
-  });
+  }));
 
-  window.addEventListener("mousedown", (event) => {
+  window.addEventListener("mousedown", trusted((event: MouseEvent) => {
     if (event.button !== 0 || !state.me?.alive) return;
     if (!hitTheWorld(event)) return;
     setUsingTouch(false);
     setAttack(1);
-  });
+  }));
 
-  window.addEventListener("mouseup", (event) => {
+  window.addEventListener("mouseup", trusted((event: MouseEvent) => {
     if (event.button !== 0) return;
     setAttack(0);
-  });
+  }));
 
   for (const id of ["touch-controls-left", "touch-controls-right", "touch-controls-fullscreen", "storeMenu"]) {
     const el = findById(id);

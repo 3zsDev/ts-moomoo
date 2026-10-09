@@ -1,5 +1,5 @@
 import { config } from "./config";
-import { serverListUrl, socialEnabled } from "./environment";
+import { serverListUrl, siteEnv, socialEnabled } from "./environment";
 import { state } from "./game/state";
 import { createBackgroundMenu } from "./game/menuWorld";
 import { grantFollowBonus, serverBrowser } from "./game/session";
@@ -12,10 +12,10 @@ import { initTurnstile, setLocalServerSelected } from "./net/turnstile";
 import { canvas } from "./render/canvas";
 import { minimapCanvas } from "./render/minimap";
 import { updateGame } from "./render/renderer";
-import { enableProtection } from "./security";
+import { enableProtection, ignoreSyntheticClicks } from "./security";
 import { hookTouchEvents } from "./utils/dom";
 import { bindAccountCard } from "./ui/account/accountCard";
-import { buildActionBar } from "./ui/actionBar";
+import { buildActionBar, paintActionBar } from "./ui/actionBar";
 import { bindAdminMenu, closeAdminMenu, toggleAdminMenu } from "./ui/admin";
 import { closeAlliance, isAllianceOpen, toggleAlliance } from "./ui/alliance";
 import { bindClanCard } from "./ui/cards/clan";
@@ -29,14 +29,16 @@ import { animateDeathText, closeChat, countFrame, isChatOpen, toggleChat } from 
 import { hideItemInfo } from "./ui/itemInfo";
 import { bindLifecycle, handleGameEscape } from "./ui/lifecycle";
 import {
-  bindMenuViews, bindNameField, bindPageChrome, bindPlayButtons, bindServerPicker, bindSettingToggles,
+  bindAccountPrefs, bindMenuViews, bindNameField, bindPageChrome, bindPlayButtons, bindServerPicker, bindSettingToggles,
   bindSkinPicker, bindTopBoard, bindVerifyDialog, initTopSpot, isMenuVisible, loadSettings,
   mountKeybindSettings, showMenuCards, showMenuStatus, startPlay,
 } from "./ui/menu";
 import { isAlive } from "./ui/netBridge";
+import { openDeepLinks } from "./ui/deepLinks";
 import { refreshNoteDots } from "./ui/noteDots";
 import { injectStylesheets } from "./ui/stylesheets";
-import { closeStore, setStoreTab, toggleStore } from "./ui/store";
+import { closeStore, isStoreOpen, refreshStore, setStoreTab, toggleStore } from "./ui/store";
+import { initTexturePack } from "./ui/texturePack";
 
 declare global {
   interface Window {
@@ -51,6 +53,7 @@ const SERVER_POLL_INTERVAL = 5000;
 
 export function boot(): void {
   enableProtection();
+  ignoreSyntheticClicks();
   void injectStylesheets();
 
   exposeGlobals();
@@ -61,6 +64,10 @@ export function boot(): void {
   mountKeybindSettings();
   bindSkinPicker();
   buildActionBar();
+  initTexturePack(() => {
+    paintActionBar();
+    if (isStoreOpen()) refreshStore();
+  });
   createBackgroundMenu();
 
   bindCards();
@@ -69,12 +76,19 @@ export function boot(): void {
   bindAccounts();
 
   initTurnstile();
+  openDeepLinks();
   installInputHandlers({
     isPlaying: isAlive,
     toggleChat,
     escape: handleGameEscape,
+    openMenu: (menu) => {
+      if (menu === "store") toggleStore();
+      else if (menu === "tribe") toggleAlliance();
+      else toggleGameMenu(closeOtherPanels);
+    },
     canUseHotkeys: () => !isAllianceOpen() && !isChatOpen() && !isCapturingKey(),
     canToggleChat: () => !isAllianceOpen(),
+    chatInput: ui.chatBox,
   });
 
   canvas.oncontextmenu = () => false;
@@ -157,11 +171,14 @@ function bindAccounts(): void {
     refreshNoteDots();
   };
   onAccountChange(refreshSocialNav);
+  bindAccountPrefs();
   friends.onChange(() => refreshNoteDots());
   refreshSocialNav();
 
   if (socialEnabled()) {
-    friends.init({ onInvite: showGameInvite, onRequest: showFriendRequest, onPresence: showPresenceNote });
+    friends.init({
+      env: siteEnv(), onInvite: showGameInvite, onRequest: showFriendRequest, onPresence: showPresenceNote,
+    });
   }
 
   initAccount();

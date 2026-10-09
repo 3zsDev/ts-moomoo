@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const EMPTY = () => ({ version: 1, users: {}, guests: {}, clans: {}, ipBans: {} });
+const EMPTY = () => ({ version: 1, users: {}, guests: {}, clans: {}, ipBans: {}, locks: {} });
 
 export class Store {
   constructor(file) {
@@ -37,6 +37,25 @@ export class Store {
   get guests() { return this.data.guests; }
   get clans() { return this.data.clans; }
   get ipBans() { return this.data.ipBans; }
+  get locks() { return this.data.locks; }
+
+  lockedFor(keys) {
+    const now = Date.now();
+    let until = 0;
+    for (const key of keys) {
+      const at = this.locks[key];
+      if (!at) continue;
+      if (at <= now) delete this.locks[key];
+      else until = Math.max(until, at);
+    }
+    return until ? Math.ceil((until - now) / 1000) : 0;
+  }
+
+  lock(keys, seconds) {
+    const until = Date.now() + seconds * 1000;
+    for (const key of keys) this.locks[key] = Math.max(this.locks[key] ?? 0, until);
+    this.save();
+  }
 
   userByName(name) {
     if (typeof name !== "string" || !name) return null;
@@ -73,5 +92,6 @@ export function newUser(id, email) {
     id, email: email ?? null, name: null, role: null, created: Date.now(),
     clan: null, invites: [], socials: {}, verdict: null, session: null, reports: [],
     stats: emptyStats(), periods: {}, friendRequests: [],
+    prefs: { friendNotifs: true, friendRequests: true, clanInvites: true },
   };
 }

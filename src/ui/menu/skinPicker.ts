@@ -1,8 +1,12 @@
 import { config } from "../../config";
 import { createElement, hookTouchEvents, removeAllChildren } from "../../utils/dom";
+import { loadSetting, saveSetting } from "../../utils/storage";
 import { ui } from "../elements";
 
-export let selectedSkinColor = 0;
+export let selectedSkinColor = (() => {
+  const saved = Number(loadSetting("skin_color")) || 0;
+  return Number.isInteger(saved) && saved >= 0 && saved < config.skinColors.length ? saved : 0;
+})();
 
 declare global {
   interface Window {
@@ -28,6 +32,7 @@ export function buildSkinColorPicker(): void {
 
 export function selectSkinColor(index: number): void {
   selectedSkinColor = index;
+  saveSetting("skin_color", String(index));
   buildSkinColorPicker();
   ui.skinPopover.style.display = "none";
 }

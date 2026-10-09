@@ -1,3 +1,5 @@
+import { raiseSecurityFlag, SecurityFlag } from "./telemetry";
+
 const KNOWN_EXTENSIONS = [
   { name: "Tampermonkey", id: "dhdgffkkebhmkfjojejmpbldmpobfkfo", resource: "options.html" },
   { name: "Tampermonkey", id: "gcalenpjmijncebpfijmoaglllgpjagf", resource: "options.html" },
@@ -12,6 +14,7 @@ export function detectUserscripts(): void {
   const report = (name: string) => {
     if (reported) return;
     reported = true;
+    raiseSecurityFlag(SecurityFlag.Userscript);
     showWarning(name);
   };
 

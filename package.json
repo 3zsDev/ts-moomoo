@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "moomoo 1.9.0 in typescript",
+  "description": "moomoo 1.9.1 in typescript",
   "scripts": {
     "build": "node build.mjs",
     "build:game": "node build.mjs --game",

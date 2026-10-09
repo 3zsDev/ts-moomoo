@@ -13,8 +13,9 @@ function setDot(el: Element | null, on: boolean): void {
 
 export function refreshNoteDots(): void {
   const social = socialEnabled();
-  const friendDot = social && friends.state().incoming.length > 0;
-  const clanDot = social && account.clanNotes > 0;
+  const { prefs } = account;
+  const friendDot = social && friends.state().incoming.length > 0 && prefs.friendNotifs && prefs.friendRequests;
+  const clanDot = social && account.clanNotes > 0 && (Boolean(account.clan) || prefs.clanInvites);
 
   setDot(findById("friendsNav"), friendDot);
   setDot(findById("clanNav"), clanDot);

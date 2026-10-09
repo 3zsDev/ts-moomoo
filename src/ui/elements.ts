@@ -34,6 +34,8 @@ export const ui = {
   nativeResolutionToggle: byId<HTMLInputElement>("nativeResolution", "input"),
   showPingToggle: byId<HTMLInputElement>("showPing", "input"),
   showFpsToggle: byId<HTMLInputElement>("showFps", "input"),
+  showGridToggle: byId<HTMLInputElement>("showGrid", "input"),
+  cameraLockToggle: byId<HTMLInputElement>("cameraLock", "input"),
   keybindHolder: byId("keybindHolder"),
 
   verifyDialog: byId("verifyDialog"),

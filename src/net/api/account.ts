@@ -11,13 +11,21 @@ export interface MyClan {
   role: ClanRole;
 }
 
-// What POST /account told us about the signed-in player
+export interface AccountPrefs {
+  friendNotifs: boolean;
+  friendRequests: boolean;
+  clanInvites: boolean;
+}
+
+const DEFAULT_PREFS: AccountPrefs = { friendNotifs: true, friendRequests: true, clanInvites: true };
+
 export const account = {
   // permanent name - really gay
   name: null as string | null,
   role: null as StaffRole,
   clan: null as MyClan | null,
   clanNotes: 0,
+  prefs: { ...DEFAULT_PREFS } as AccountPrefs,
 };
 
 const ACCOUNT_REFRESH_INTERVAL = 120000;
@@ -56,6 +64,30 @@ interface AccountResponse {
   role?: StaffRole;
   clan?: MyClan;
   clanNotes?: number;
+  prefs?: Partial<AccountPrefs>;
+}
+
+function setPrefs(prefs: Partial<AccountPrefs> | null | undefined): void {
+  account.prefs = { ...DEFAULT_PREFS, ...(prefs ?? {}) };
+}
+
+export function savePref(key: keyof AccountPrefs, value: boolean): Promise<void> {
+  account.prefs[key] = value;
+  return freshAccessToken()
+    .then((auth) => apiPost("/account/prefs", { auth, prefs: { [key]: value } }))
+    .then((response) => {
+      if (!response.ok) throw new ApiError("prefs", response.status);
+      return response.json() as Promise<{ prefs?: Partial<AccountPrefs> }>;
+    })
+    .then((data) => {
+      setPrefs(data.prefs);
+      emitChange();
+    })
+    .catch((error) => {
+      account.prefs[key] = !value;
+      emitChange();
+      throw error;
+    });
 }
 
 export function refreshAccount(): Promise<void> {
@@ -64,6 +96,7 @@ export function refreshAccount(): Promise<void> {
     account.role = null;
     account.clan = null;
     account.clanNotes = 0;
+    setPrefs(null);
     emitChange();
     return Promise.resolve();
   }
@@ -77,6 +110,7 @@ export function refreshAccount(): Promise<void> {
       account.role = data?.role || null;
       account.clan = (social && data?.clan) || null;
       account.clanNotes = (social && data?.clanNotes) || 0;
+      setPrefs(data?.prefs);
       emitChange();
     })
     .catch(() => emitChange());
@@ -100,7 +134,14 @@ export function claimName(name: string): Promise<string | null> {
     .then((auth) => apiPost("/name", { auth, name }))
     .then(
       (response) => {
-        if (response.status === 400) throw new ApiError("Pick a different name", 400);
+        if (response.status === 400) {
+          return response
+            .json()
+            .catch(() => ({}))
+            .then((data: { error?: string; shown?: string }) => {
+              throw new ApiError(nameError(data), 400);
+            });
+        }
         if (response.status === 409) throw new ApiError("That name is taken", 409);
         return response.ok ? (response.json() as Promise<{ name?: string }>) : null;
       },
@@ -115,11 +156,20 @@ export function claimName(name: string): Promise<string | null> {
     });
 }
 
+function nameError(data: { error?: string; shown?: string }): string {
+  if (data.error === "censored") return `That name would show as "${data.shown}" in game - pick another`;
+  if (data.error === "unclean") return "That name isn't allowed - pick another";
+  return "Names are 3-15 letters, numbers and _ : ( ) / ? -";
+}
+
 const AUTHED_ERRORS: Record<string, string> = {
   taken: "That clan name is taken",
   invalid: "Pick a name of 3-4 letters and numbers",
+  unclean: "That clan name isn't allowed - pick another",
   "in a clan": "Already in a clan",
   full: "That clan is full",
+  closed: "That clan isn't taking requests to join",
+  "no invites": "That player isn't taking clan invitations",
   "no player": "No player by that name",
   "no member": "No member by that name",
   "not found": "No clan by that name",

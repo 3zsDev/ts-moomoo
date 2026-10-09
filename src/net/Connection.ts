@@ -270,6 +270,10 @@ export class Connection {
     sendOnSocket(this.socket, frame);
   }
 
+  public isPinned(): boolean {
+    return Boolean(this.cipher?.pinned);
+  }
+
   public isReady(): boolean {
     return !!this.socket && this.connected && this.socket.readyState === WebSocket.OPEN;
   }

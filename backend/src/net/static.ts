@@ -39,9 +39,16 @@ export function shareLinkRedirect(pathname: string): string | null {
   return `/?${match[1] === "player" ? "profile" : "clan"}=${encodeURIComponent(value)}`;
 }
 
+function staffPath(publicDir: string, pathname: string): string {
+  const match = /^\/staff\/([^/]+)\/(.*)$/.exec(pathname);
+  if (!match || existsSync(path.join(publicDir, "staff", match[1]))) return pathname;
+  return `/staff/${match[2]}`;
+}
+
 export function serveStatic(
   res: ServerResponse, publicDir: string, pathname: string, injectHead = "",
 ): void {
+  pathname = staffPath(publicDir, pathname);
   const redirect = shareLinkRedirect(pathname);
   if (redirect) {
     res.writeHead(302, { Location: redirect, "Cache-Control": "no-store" });

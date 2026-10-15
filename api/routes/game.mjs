@@ -315,6 +315,9 @@ export const gameRoutes = {
     const restartAt = Number(body.restartAt) > Date.now() ? Number(body.restartAt) : undefined;
 
     ctx.servers.set(key, {
+      key,
+      region: String(body.region ?? "0"),
+      name: String(body.name ?? "1"),
       playerCount,
       sandbox: Boolean(body.sandbox),
       url: port ? `http://${host}:${port}` : null,

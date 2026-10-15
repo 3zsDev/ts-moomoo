@@ -1,5 +1,5 @@
 import { assetUrl } from "../../assetBase";
-import { animalTypes } from "../../data/animals";
+import { ICON_NAMES } from "../../data/assets";
 
 export interface LoadedImage extends HTMLImageElement {
   isLoaded?: boolean;
@@ -42,25 +42,24 @@ export const icons = {
   get crown() {
     return sprites.icon("crown");
   },
-  get skull() {
-    return sprites.icon("skull");
-  },
 };
 
-// live loads the leader crown and skull icons when the menu is set up
+const NAME_TAG_ICONS: ReadonlyArray<string | null> = [
+  null, "skull", "crown_gold", "crown_silver", "crown_bronze",
+  "skull_crown_gold", "skull_crown_silver", "skull_crown_bronze",
+];
+
+export function nameTagIcon(iconIndex: number): LoadedImage | null {
+  const name = NAME_TAG_ICONS[iconIndex];
+  return name ? sprites.icon(name) : null;
+}
+
 export function preloadIcons(): void {
-  void icons.crown;
-  void icons.skull;
+  for (const name of ICON_NAMES) sprites.icon(name);
 }
 
-// live warms every animal sprite once the page goes idle
-function warmAnimalSprites(): void {
-  for (const type of animalTypes) {
-    if (type.src) sprites.animal(type.src);
+export function warmAnimalSprites(kinds: ReadonlyArray<{ src?: string } | null | undefined>): void {
+  for (const kind of kinds) {
+    if (kind?.src) sprites.animal(kind.src);
   }
-}
-
-if (typeof window !== "undefined") {
-  if (window.requestIdleCallback) window.requestIdleCallback(warmAnimalSprites, { timeout: 5e3 });
-  else setTimeout(warmAnimalSprites, 2e3);
 }

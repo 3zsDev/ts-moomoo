@@ -1,7 +1,6 @@
 import { apiBase, restApiEnabled, socialEnabled } from "../../environment";
 import { serverBrowser } from "../../game/session";
 import { auth, friends } from "../../net/api";
-import { addStaffFeedEntry } from "../admin";
 import { onClanOnlineEvent } from "../cards/clan";
 import { onFriendEvent, onInviteEvent, pollFriendPresence, serverLabel } from "../friends/friendList";
 import { pushNote } from "../friends/notices";
@@ -49,7 +48,7 @@ export function bindSocial(): void {
       invite: onInviteEvent,
       count: onCountEvent,
       event: onGameEvent,
-      feed: addStaffFeedEntry,
+      feed: () => {},
     },
   });
   auth.onAuthChange(() => pageStream.restart());

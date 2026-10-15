@@ -4,7 +4,8 @@ import { loadSetting, saveSetting } from "../utils/storage";
 export type ActionId =
   | "moveUp" | "moveLeft" | "moveDown" | "moveRight"
   | "attack" | "autoGather" | "food" | "lockDir" | "mapPing" | "mapMarker"
-  | `slot${number}` | `kind_${string}` | `menu_${MenuId}`;
+  | `slot${number}` | `kind_${string}` | `menu_${MenuId}`
+  | (string & {});
 
 export type MenuId = "store" | "tribe" | "game";
 
@@ -21,6 +22,7 @@ export interface KeyAction {
   was?: ActionId[];
   note?: string;
   section?: string;
+  run?: () => void;
 }
 
 const STORAGE_KEY = "moo_keybinds";
@@ -186,6 +188,30 @@ export function resetKeybinds(): void {
   rebuild();
   save();
   changed(true);
+}
+
+export function addKeyActions(actions: KeyAction[]): void {
+  let stored: Record<string, unknown> = {};
+  try {
+    stored = JSON.parse(loadSetting(STORAGE_KEY) || "{}") || {};
+  } catch {}
+
+  let rebound = false;
+  for (const action of actions) {
+    if (KEY_ACTIONS.some((known) => known.id === action.id)) continue;
+    KEY_ACTIONS.push(action);
+    const value = stored[action.id];
+    if (typeof value === "number" && !RESERVED_KEYS.has(value)) {
+      bound[action.id] = value;
+      continue;
+    }
+    for (const other of KEY_ACTIONS) if (other !== action && bound[other.id] === action.key) bound[other.id] = 0;
+    bound[action.id] = action.key;
+    rebound = true;
+  }
+  rebuild();
+  if (rebound) save();
+  changed(false);
 }
 
 export function onKeybindsChange(listener: (bindingsChanged: boolean) => void): void {

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import { serverConfig } from "./config";
-import { forceSandbox } from "./shared";
+import { forceSandbox, type MsgPackValue } from "./shared";
 import { admit, fetchReserved, internalHeaders } from "./net/api";
 import { Client } from "./net/Client";
 import { proxyLiveSocket, serveLiveProtocol } from "./net/liveSocketProxy";
@@ -21,7 +21,7 @@ const localSite = JSON.stringify({
 }).replace(/[<>]/g, "");
 const INJECT_HEAD = serverConfig.wsOnly ? "" : `<script>window.__MOOMOO_LOCAL__=${localSite};</script>`;
 
-const API_ROUTE = /^\/(join|account|account\/socials|account\/prefs|account\/look|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow|discord\/link|page\/ticket|page\/friends|invite|chat\/[a-z]+|top-now)$/;
+const API_ROUTE = /^\/(join|account|account\/socials|account\/prefs|account\/look|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow|discord\/link|page\/ticket|page\/friends|invite|chat\/[a-z]+)$/;
 const API_STREAM = "/page/stream";
 const MODERATION_ACTIONS = new Set(["kick", "ban", "shadow", "clear"]);
 
@@ -164,6 +164,28 @@ async function handleInternal(req: IncomingMessage, res: ServerResponse, path: s
       did: typeof body.did === "string" ? body.did : undefined,
     };
     sendJson(res, { ok: true, matched: game.moderate(target, action as ModerationAction) });
+    return;
+  }
+
+  if (path === "/internal/admin") {
+    const args = Array.isArray(body.args) ? (body.args as MsgPackValue[]) : [];
+    const role = body.role === "admin" || body.role === "mod" ? body.role : null;
+    if (!role || typeof args[0] !== "string") {
+      sendJson(res, { error: "invalid" }, 400);
+      return;
+    }
+    const result = game.staffCommand(Number(body.sid), args, role);
+    if ("error" in result) {
+      sendJson(res, result, result.error === "rank" ? 403 : 404);
+      return;
+    }
+    if (args[0] !== "state") console.log(`[admin] ${String(body.by ?? "staff")}: ${args.join(" ")} on #${Number(body.sid)}`);
+    sendJson(res, { ok: true, state: result.state });
+    return;
+  }
+
+  if (path === "/internal/world") {
+    sendJson(res, game.staffWorld());
     return;
   }
 

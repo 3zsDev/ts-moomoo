@@ -4,7 +4,7 @@ import { gameObjects, projectiles } from "../../game/world";
 import { camera } from "../camera";
 import { painter, isOnScreen } from "../surface";
 import { renderProjectile } from "../draw";
-import { getItemSprite, getGameObjectSprite } from "../sprites";
+import { gameObjectTurn, getItemSprite, getGameObjectSprite } from "../sprites";
 
 const layers = new Map<number, GameObject[]>();
 
@@ -63,7 +63,11 @@ function renderPlacedItem(obj: GameObject, screenX: number, screenY: number): vo
 
 function renderNaturalObject(obj: GameObject, screenX: number, screenY: number): void {
   const sprite = getGameObjectSprite(obj);
-  painter.drawImage(sprite, screenX - sprite.width / 2, screenY - sprite.height / 2);
+  painter.save();
+  painter.translate(screenX, screenY);
+  painter.rotate(gameObjectTurn(obj));
+  painter.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
+  painter.restore();
 }
 
 export function renderProjectiles(layer: number): void {

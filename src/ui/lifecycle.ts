@@ -2,7 +2,6 @@ import { serverBrowser } from "../game/session";
 import { state } from "../game/state";
 import { boundKey, enableJoysticks, isMobileDevice, setUsingTouch } from "../input";
 import { friends } from "../net/api";
-import { closeAdminMenu, isAdminMenuOpen } from "./admin";
 import { closeAlliance, isAllianceOpen } from "./alliance";
 import { closeClanCard, isClanCardOpen } from "./cards/clan";
 import { closeProfile, isProfileOpen, resetLiveStats } from "./cards/profile";
@@ -31,12 +30,12 @@ export function closeGamePanels(): void {
   closeStore();
   closeAlliance();
   closeGameMenu();
-  closeAdminMenu();
+  ui.adminMenu.style.display = "none";
   closeChat();
 }
 
 function anythingOpen(): boolean {
-  return isStoreOpen() || isAllianceOpen() || isGameMenuOpen() || isAdminMenuOpen() || isChatOpen() ||
+  return isStoreOpen() || isAllianceOpen() || isGameMenuOpen() || isChatOpen() ||
     isProfileOpen() || isClanCardOpen() || isWhisperCardOpen() || ui.reportMenu.style.display === "block";
 }
 

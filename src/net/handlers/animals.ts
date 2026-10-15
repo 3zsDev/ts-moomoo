@@ -1,7 +1,7 @@
 import { config } from "../../config";
 import type { Animal } from "../../entities/Animal";
 import { findAnimalBySid } from "../../game/lookups";
-import { animalManager } from "../../game/world";
+import { animalKinds } from "../../game/world";
 
 export function loadAI(data?: number[], hidden?: number[]): void {
   const now = Date.now();
@@ -30,7 +30,8 @@ export function loadAI(data?: number[], hidden?: number[]): void {
       animal.state = state;
       animal.dt = 0;
     } else {
-      animal = animalManager.spawn(data[i + 2], data[i + 3], data[i + 4] / 100, index);
+      animal = animalKinds.spawn(data[i + 2], data[i + 3], data[i + 4] / 100, index);
+      if (!animal) continue;
       animal.x2 = animal.x;
       animal.y2 = animal.y;
       animal.d2 = animal.dir;
@@ -39,13 +40,13 @@ export function loadAI(data?: number[], hidden?: number[]): void {
       animal.stateAt = now;
       animal.forcePos = true;
 
-      if (!animalManager.animalTypes[index].name) {
+      if (!animalKinds.kind(index)!.name) {
         animal.name = config.cowNames[data[i + 6]];
       }
-      (animal as { sid: number }).sid = data[i];
+      animal.sid = data[i];
     }
 
-    animal.isBoss = !!animalManager.animalTypes[index].boss;
+    animal.isBoss = !!animalKinds.kind(index)!.boss;
     animal.visible = true;
   }
 

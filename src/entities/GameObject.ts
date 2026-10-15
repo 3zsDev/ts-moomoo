@@ -60,6 +60,9 @@ export class GameObject {
 
   public gridLocations: string[] = [];
 
+  public turn?: number;
+  public turnOf?: number;
+
   public constructor(sid: number) {
     this.sid = sid;
   }

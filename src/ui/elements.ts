@@ -81,7 +81,6 @@ export const ui = {
   menuButton: byId("menuButton"),
   adminButton: byId("adminButton"),
   adminMenu: byId("adminMenu"),
-  adminHolder: byId("adminHolder"),
 
   allianceMenu: byId("allianceMenu"),
   allianceHolder: byId("allianceHolder"),

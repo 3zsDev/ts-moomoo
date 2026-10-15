@@ -1,3 +1,5 @@
+import { createHash, createHmac } from "node:crypto";
+
 import { isListedAdmin, readAuth } from "../lib/auth.mjs";
 import { censor, isRude, sanitize } from "../lib/filter.mjs";
 import { fail, ok, RateLimiter } from "../lib/http.mjs";
@@ -16,6 +18,7 @@ const STAT_KEYS = [
 ];
 
 const lookups = new RateLimiter(60, 60 * 1000);
+const STAFF_PAGE_KEY = process.env.INTERNAL_KEY || process.env.IP_HASH_SALT || "moomoo";
 const SKIN_COLORS = 10;
 
 function lookOf(user) {
@@ -95,6 +98,15 @@ export function isStaff(user) {
   return user?.role === "admin" || user?.role === "mod";
 }
 
+export function staffPageOf(user) {
+  if (!isStaff(user)) return undefined;
+  const id = String(user.id);
+  const plain = id.trim().toLowerCase();
+  const short = /^[0-9a-z]{1,12}$/.test(plain) ? plain : createHash("sha256").update(id).digest("hex").slice(0, 12);
+  const hash = createHmac("sha256", STAFF_PAGE_KEY).update(id).digest("hex").slice(0, 32);
+  return `/staff/${short}.${hash}/`;
+}
+
 export function prefsOf(user) {
   return { ...DEFAULT_PREFS, ...(user?.prefs ?? {}) };
 }
@@ -158,6 +170,7 @@ export const accountRoutes = {
       clan: clanOf(ctx.store, user) ?? undefined,
       clanNotes: clanNotes(ctx.store, user),
       prefs: prefsOf(user),
+      staffPage: staffPageOf(user),
     });
   },
 

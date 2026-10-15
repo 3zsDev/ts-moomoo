@@ -19,6 +19,13 @@ export class SwingAnimation {
     this.returning = false;
   }
 
+  public reset(): void {
+    this.timeLeft = 0;
+    this.offset = 0;
+    this.progress = 0;
+    this.returning = false;
+  }
+
   public update(delta: number): void {
     if (this.timeLeft <= 0) return;
     this.timeLeft -= delta;

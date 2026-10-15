@@ -3,11 +3,11 @@ import type { Animal } from "../../entities/Animal";
 import type { Player } from "../../entities/Player";
 import { isFriendly } from "../../game/lookups";
 import { state } from "../../game/state";
-import { animals, players, textManager } from "../../game/world";
+import { animalKinds, animals, players, textManager } from "../../game/world";
 import { inFallsPool } from "../../utils/falls";
 import { camera } from "../camera";
 import { painter, textLayer, view } from "../surface";
-import { icons } from "../sprites";
+import { icons, nameTagIcon } from "../sprites";
 import { hidesOwnName } from "../../ui/anonMode";
 import type { LabelPiece } from "../painter";
 
@@ -31,6 +31,7 @@ export function formatNameTag(team: string | null | undefined, clan: string | nu
 export function renderOverlays(delta: number): void {
   const me = state.me;
   let boss: Player | Animal | null = null;
+  let ownBoss: Player | null = null;
 
   for (const entity of [...players, ...animals] as Array<Player | Animal>) {
     if (!entity.visible) continue;
@@ -39,16 +40,18 @@ export function renderOverlays(delta: number): void {
       if ((entity as Animal).active && me && inFallsPool(me.x, me.y)) boss ??= entity;
       continue;
     }
-    if ((entity as Player).bossMode && entity !== me) {
-      boss ??= entity;
+    if ((entity as Player).bossMode) {
+      if (entity === me) ownBoss = entity as Player;
+      else boss ??= entity;
       continue;
     }
-    if ((entity as Animal).isAI && (entity as Animal).state && (entity as Animal).diver) continue;
+    if ((entity as Animal).isAI && (entity as Animal).state && animalKinds.kind((entity as Animal).index)?.diver) continue;
     if ((entity as Player).skinIndex === 10 && !isFriendly(entity)) continue;
 
     renderNameAndHealth(entity);
   }
 
+  boss ??= ownBoss;
   if (boss) renderBossBar(boss);
 
   textManager.update(delta, textLayer.painter, camera.left, camera.top);
@@ -58,7 +61,9 @@ export function renderOverlays(delta: number): void {
 function renderNameAndHealth(entity: Player | Animal): void {
   const me = state.me;
   const player = entity as Player;
-  const tag = formatNameTag(player.team, entity === me && hidesOwnName() ? null : player.clan);
+  const tag = player.disguised
+    ? formatNameTag(player.clan, player.clan)
+    : formatNameTag(player.team, entity === me && hidesOwnName() ? null : player.clan);
   const name = entity.name ?? "";
 
   const screenX = entity.x - camera.left;
@@ -74,7 +79,6 @@ function renderNameAndHealth(entity: Player | Animal): void {
       !(player.team && player.team === me?.team);
     const color = clanmate ? CLANMATE_COLOR : "#fff";
 
-    // one label sprite: every piece shares the outline, all strokes go down before the fills
     const pieces: LabelPiece[] = [];
     const add = (text: string, pieceSize: number, pieceColor: string) => {
       if (text) pieces.push({ text, size: pieceSize, color: pieceColor });
@@ -108,11 +112,12 @@ function renderNameIcons(player: Player, screenX: number, nameY: number, halfLab
   const size = config.crownIconScale;
   const iconY = nameY - size / 2 - 5;
 
-  if (player.isLeader && icons.crown.isLoaded) {
+  if (player.isLeader && !(player.iconIndex >= 2) && icons.crown.isLoaded) {
     painter.drawImage(icons.crown, screenX - size / 2 - halfLabel - config.crownPad, iconY, size, size);
   }
-  if (player.iconIndex === 1 && icons.skull.isLoaded) {
-    painter.drawImage(icons.skull, screenX - size / 2 + halfLabel + config.crownPad, iconY, size, size);
+  const icon = nameTagIcon(player.iconIndex);
+  if (icon?.isLoaded) {
+    painter.drawImage(icon, screenX - size / 2 + halfLabel + config.crownPad, iconY, size, size);
   }
 }
 

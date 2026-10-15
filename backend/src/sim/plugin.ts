@@ -1,4 +1,5 @@
-import type { Animal, GameObject, Player } from "../shared";
+import type { GameObject, Player } from "../shared";
+import type { Animal } from "./animals";
 import type { ClanManager } from "./game/clans";
 
 export interface SimHost {

@@ -107,9 +107,17 @@ export function updateItems(list: number[], isWeapons: number): void {
 }
 
 export function updateAge(xp?: number, maxXp?: number, age?: number): void {
-  refreshAge(xp, maxXp, age);
+  if (state.me) refreshAge(xp, maxXp, age);
 }
 
 export function updateUpgrades(points: number, age: number): void {
-  refreshUpgrades(points, age);
+  if (state.me) refreshUpgrades(points, age);
+}
+
+export function updateDive(sid: number, dive: number, diveMs: number): void {
+  const player = findPlayerBySid(sid);
+  if (!player) return;
+  player.dive = dive || 0;
+  player.diveAt = Date.now();
+  player.diveMs = diveMs || 0;
 }

@@ -1,3 +1,3 @@
 export const privacy = {
-  noBan: false,
+  noBan: true,
 };

@@ -1,6 +1,17 @@
 MooMoo.io (ts-moomoo) - version history
 =======================================
 
+1.9.4
+-----
+- Animals are run by the server only; their kinds come with the game setup. Players can be morphed into an animal,
+  dive, turn invisible or wear a disguise.
+- Gold, silver and bronze crowns for the top three on the leaderboard, the top boards and name tags.
+- Top boards: a Players/Clans switch next to the week/month/all tabs. The "Right now" tab is gone.
+- The action bar packs its slots into smaller rows when they don't fit.
+- Graphics are rebuilt after the tab comes back; resource and item shapes stay the same when they are.
+- The in-game admin panel and the staff Live feed are gone; staff are sent to their staff page instead.
+- Protocol build s16od8; new dive-state packet.
+
 1.9.3
 -----
 - Yeti rebalanced: more damage and health, less score and food, and it comes back 5 minutes after it dies.

@@ -78,17 +78,6 @@ function applyEnvironmentHead(): void {
   document.querySelector('meta[name="robots"]')?.setAttribute("content", sandbox ? "noindex, nofollow" : "index, follow");
   document.querySelector('meta[property="og:image"]')?.setAttribute("content", ogImage);
   document.querySelector('meta[name="twitter:image"]')?.setAttribute("content", ogImage);
-
-  for (const script of document.querySelectorAll<HTMLScriptElement>('script[type="importmap"]')) {
-    try {
-      const map = JSON.parse(script.textContent ?? "");
-      if (typeof map?.imports?.["moomoo-protocol"] !== "string") continue;
-      map.imports["moomoo-protocol"] = sandbox ? "/p/s16o48.js" : "/p/s16o49.js";
-      script.textContent = JSON.stringify(map);
-    } catch {
-      // ignore malformed import maps
-    }
-  }
 }
 
 applyEnvironmentHead();
@@ -105,7 +94,7 @@ async function initializeLocalFrvrSdk(scope: FrvrWindow): Promise<void> {
 
     frvr.tracker?.addExtraFieldFunction?.((fields) => {
       fields.context = "moomoo";
-      fields.app_version = "1.9.3";
+      fields.app_version = "1.9.4";
       if (TRACKER_CHANNEL) fields.channel = TRACKER_CHANNEL;
     });
   } catch {

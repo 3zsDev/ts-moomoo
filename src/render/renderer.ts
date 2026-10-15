@@ -1,5 +1,5 @@
 import { outlineWidth, paletteColors } from "../config";
-import { clearTextLayer, endFrame, painter } from "./surface";
+import { clearTextLayer, endFrame, painter, rebuildPainters } from "./surface";
 import { camera, lockCameraToPlayer, updateCamera } from "./camera";
 import { interpolateEntities } from "./interpolation";
 import { renderGrid, renderBackground, renderMapBorders, renderWaterBodies } from "./layers/ground";
@@ -8,6 +8,28 @@ import { renderAI, renderPlayers } from "./layers/entities";
 import { renderOverlays } from "./layers/overlays";
 import { renderTelegraphs } from "./layers/telegraphs";
 import { renderMinimap } from "./minimap";
+import { clearSpriteCaches } from "./sprites";
+
+const REBUILD_AFTER_HIDDEN = 1000;
+let hiddenSince = document.hidden ? Date.now() : 0;
+
+function rebuildGraphics(): void {
+  clearSpriteCaches();
+  rebuildPainters();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    hiddenSince ||= Date.now();
+    return;
+  }
+  const hiddenFor = hiddenSince ? Date.now() - hiddenSince : 0;
+  hiddenSince = 0;
+  if (hiddenFor >= REBUILD_AFTER_HIDDEN) rebuildGraphics();
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) rebuildGraphics();
+});
 
 export function updateGame(delta: number): void {
   clearTextLayer();

@@ -117,6 +117,8 @@ function handleKeyDown(event: KeyboardEvent, callbacks: InputCallbacks): void {
     markCurrentPosition();
   } else if (id === "lockDir") {
     toggleLockDir();
+  } else if (action?.run) {
+    action.run();
   } else if (action?.kind) {
     selectKind(action.kind);
   } else if (slot !== undefined && me.weapons[slot] != null) {

@@ -47,4 +47,5 @@ export interface Painter {
 
   clear(): void;
   endFrame(): void;
+  rebuild(): void;
 }

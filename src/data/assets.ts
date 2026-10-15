@@ -1,9 +1,12 @@
 import { unlockableVariants } from "./weaponVariants";
-import { animalTypes } from "./animals";
+import { animalSprites } from "./animals";
 import { accessories, hats } from "./cosmetics";
 import { projectileTypes, weapons } from "./items";
 
-export const ICON_NAMES = ["crown", "skull"];
+export const ICON_NAMES = [
+  "crown", "skull", "crown_gold", "crown_silver", "crown_bronze",
+  "skull_crown_gold", "skull_crown_silver", "skull_crown_bronze",
+];
 
 export const RESOURCE_ICON_NAMES = ["food", "wood", "stone", "gold"];
 
@@ -35,8 +38,8 @@ export function listAssetPaths(): string[] {
     paths.add(`img/accessories/access_${accessory.id}.png`);
   }
 
-  for (const animal of animalTypes) {
-    paths.add(`img/animals/${animal.src}.png`);
+  for (const src of animalSprites) {
+    paths.add(`img/animals/${src}.png`);
   }
 
   for (const promo of PROMO_IMAGES) {

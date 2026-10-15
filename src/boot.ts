@@ -17,7 +17,6 @@ import { enableProtection, ignoreSyntheticClicks } from "./security";
 import { hookTouchEvents } from "./utils/dom";
 import { bindAccountCard } from "./ui/account/accountCard";
 import { buildActionBar, paintActionBar } from "./ui/actionBar";
-import { bindAdminMenu, closeAdminMenu, toggleAdminMenu } from "./ui/admin";
 import {
   answerJoinRequest, closeAlliance, createAlliance, isAllianceOpen, kickMember, leaveAlliance, requestJoin, toggleAlliance,
 } from "./ui/alliance";
@@ -180,7 +179,7 @@ function closeOtherPanels(): void {
   closeStore();
   closeAlliance();
   closeGameMenu();
-  closeAdminMenu();
+  ui.adminMenu.style.display = "none";
   if (isProfileOpen()) closeProfile();
   closeWhisperCard();
   closeChat();
@@ -197,7 +196,8 @@ function bindGameButtons(): void {
   bind(ui.storeButton, toggleStore);
   bind(ui.chatButton, toggleChat);
   bind(ui.menuButton, () => toggleGameMenu(closeOtherPanels));
-  bind(ui.adminButton, () => toggleAdminMenu(closeOtherPanels));
+  bind(ui.adminButton, () => {});
+  ui.adminButton.style.display = "none";
   bind(ui.autoGatherButton, () => {
     if (!isAlive()) return;
     toggleAutoGather();
@@ -206,7 +206,6 @@ function bindGameButtons(): void {
   bind(minimapCanvas, pingMinimap);
 
   bindGameMenu();
-  bindAdminMenu();
 }
 
 function bindAccounts(): void {

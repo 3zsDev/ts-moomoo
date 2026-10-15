@@ -1,0 +1,58 @@
+html,body{height:auto;min-height:100%;overflow:visible}
+body.staffPage{overflow-x:hidden;overflow-y:auto;background:linear-gradient(#00000080,#00000080) fixed,#b6db66;-webkit-overflow-scrolling:touch}
+
+#staffTop{display:flex;align-items:center;gap:12px;max-width:760px;margin:0 auto;padding:14px 16px 6px;padding-top:max(14px,env(safe-area-inset-top));box-sizing:border-box}
+#staffBrand{flex:1 1 auto;min-width:0;font-size:34px;color:#fff;white-space:nowrap;text-shadow:0 1px 0 #c4c4c4,0 2px 0 #c4c4c4,0 3px 0 #c4c4c4}
+#staffBrand span{font-size:20px;color:#7ee559;text-shadow:none}
+#staffWho{display:flex;align-items:center;gap:6px;min-width:0}
+.staffWhoName{font-size:17px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.staffRole{padding:2px 7px;border-radius:6px;font-size:13px;color:#292929;background-color:#ececec}
+.staffRole.admin{background-color:#ffd34d}
+#staffBack{flex:0 0 auto;padding:6px 11px;border-radius:8px;font-size:15px;color:#fff;background-color:#5aa9e8;box-shadow:0 3px #4588c2}
+#staffBack:hover{background-color:#4f9ad6}
+
+#staffMain{max-width:760px;margin:0 auto;padding:6px 16px 40px;padding-bottom:max(40px,env(safe-area-inset-bottom));box-sizing:border-box}
+#staffMain .menuCard{display:block;width:auto;margin:0 0 14px;box-sizing:border-box}
+#staffGate{max-width:420px;margin:60px auto 0!important}
+#staffGate .menuButton{display:block;margin-top:8px}
+.staffGateBack,.staffGateBack:visited,.staffGateBack:hover{color:#fff}
+
+.staffTabs{margin-bottom:14px;box-shadow:0 5px #c4c4c4}
+.staffTabs a{font-size:16px;white-space:nowrap}
+.staffFeed{max-height:none}
+
+.staffStatus{min-height:0;font-size:14px;color:#7a7a7a}
+.staffStatus:empty{display:none}
+.staffStatus.ok{color:#5fae40}
+.staffStatus.error{color:#c0392b}
+.staffStatus.busy{color:#a8a8a8}
+
+.staffServer{padding:6px 0 4px;border-top:2px solid #ececec}
+.staffServer:first-child{border-top:none}
+.staffServerHead{display:flex;align-items:baseline;gap:8px}
+.staffServerName{flex:0 0 auto;font-size:19px;color:#292929}
+.staffPlayer{font-size:16px;padding:3px 0}
+.staffPlayer .friendName{flex:0 1 auto;max-width:40%}
+
+.adminInput.staffWide{flex:1 1 140px;width:auto}
+.staffCheck{display:flex;align-items:center;gap:4px;font-size:14px;color:#4a4a4a;cursor:pointer}
+.staffCheck span{font-size:14px}
+.staffResults .menuHeader{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.staffLink{font-size:15px}
+.staffNotice{white-space:normal}
+.staffButtons{margin-top:6px}
+.staffSaid{max-height:320px}
+
+.staffInfo,.staffInfo *,.staffNotice,.adminFeedText,.adminFeedText *{-webkit-user-select:text;-moz-user-select:text;user-select:text}
+.staffLine label,.staffLine span{font-size:13px}
+
+@media only screen and (max-width: 600px){
+  #staffTop{flex-wrap:wrap}
+  #staffBrand{flex-basis:100%;font-size:28px}
+  #staffWho{flex:1 1 auto}
+  .staffTabs a{font-size:14px}
+  .adminLabel{flex-basis:100%}
+  .staffPlayer{flex-wrap:wrap}
+  .staffPlayer .friendName{max-width:none}
+  .staffPlayer .friendNote{flex-basis:100%;order:3}
+}

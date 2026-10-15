@@ -69,9 +69,22 @@ interface AccountResponse {
   clan?: MyClan;
   clanNotes?: number;
   prefs?: Partial<AccountPrefs>;
+  staffPage?: string;
 }
 
-// clan chat and whispers can't be turned off (yet), whatever the account says
+const STAFF_PAGE = /^\/staff\/[0-9a-z]{1,12}\.[0-9a-f]{32}\/$/;
+
+function openStaffPage(page: unknown): void {
+  if (typeof page !== "string" || !STAFF_PAGE.test(page) || state.playing) return;
+  try {
+    if (sessionStorage.getItem("staff_page")) return;
+    sessionStorage.setItem("staff_page", "1");
+  } catch {
+    return;
+  }
+  location.replace(page + location.search + location.hash);
+}
+
 function setPrefs(prefs: Partial<AccountPrefs> | null | undefined): void {
   account.prefs = { ...DEFAULT_PREFS, ...(prefs ?? {}), clanChat: true, whispers: true };
 }
@@ -113,6 +126,7 @@ export function refreshAccount(): Promise<void> {
       const social = socialEnabled();
       account.name = data?.name || null;
       account.role = data?.role || null;
+      openStaffPage(data?.staffPage);
       account.clan = (social && data?.clan) || null;
       account.clanNotes = (social && data?.clanNotes) || 0;
       setPrefs(data?.prefs);

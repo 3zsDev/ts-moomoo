@@ -1,10 +1,14 @@
 import { outlineWidth, paletteColors } from "../../config";
 import type { GameObject } from "../../entities/GameObject";
-import { randFloat, randInt, TAU } from "../../utils/math";
+import { seededRandom, TAU, type SeededRandom } from "../../utils/math";
 import { renderBlob, renderCircle, renderStar } from "../canvas/shapes";
 import { Biome, biomeAt } from "./biome";
 
 const cache: Record<string, HTMLCanvasElement> = {};
+
+export function clearGameObjectSprites(): void {
+  for (const key of Object.keys(cache)) delete cache[key];
+}
 
 export function getGameObjectSprite(obj: GameObject): HTMLCanvasElement {
   const biome = biomeAt(obj.y);
@@ -13,24 +17,22 @@ export function getGameObjectSprite(obj: GameObject): HTMLCanvasElement {
   const cached = cache[key];
   if (cached) return cached;
 
+  const random = seededRandom(`res:${key}`);
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = obj.scale * 2.1 + outlineWidth;
 
   const ctx = canvas.getContext("2d")!;
   ctx.translate(canvas.width / 2, canvas.height / 2);
-
-  ctx.rotate(randFloat(0, Math.PI));
   ctx.strokeStyle = paletteColors.outline;
   ctx.lineWidth = outlineWidth;
 
   switch (obj.type) {
     case 0:
-      // live only rounds the joins of trees; bushes and rocks keep the default miter
       ctx.lineJoin = "round";
       renderTree(ctx, obj, biome);
       break;
     case 1:
-      renderBush(ctx, obj, biome);
+      renderBush(ctx, obj, biome, random);
       break;
     case 2:
     case 3:
@@ -56,7 +58,7 @@ function renderTree(ctx: CanvasRenderingContext2D, obj: GameObject, biome: Biome
   }
 }
 
-function renderBush(ctx: CanvasRenderingContext2D, obj: GameObject, biome: Biome): void {
+function renderBush(ctx: CanvasRenderingContext2D, obj: GameObject, biome: Biome, random: SeededRandom): void {
   if (biome === Biome.Desert) {
     ctx.fillStyle = "#606060";
     renderStar(ctx, 6, obj.scale * 0.3, obj.scale * 0.71);
@@ -78,8 +80,8 @@ function renderBush(ctx: CanvasRenderingContext2D, obj: GameObject, biome: Biome
   const berries = 4;
   const step = TAU / berries;
   for (let i = 0; i < berries; ++i) {
-    const distance = randInt(obj.scale / 3.5, obj.scale / 2.3);
-    renderCircle(ctx, distance * Math.cos(step * i), distance * Math.sin(step * i), randInt(10, 12));
+    const distance = random.int(obj.scale / 3.5, obj.scale / 2.3);
+    renderCircle(ctx, distance * Math.cos(step * i), distance * Math.sin(step * i), random.int(10, 12));
   }
 }
 
@@ -94,4 +96,12 @@ function renderRock(ctx: CanvasRenderingContext2D, obj: GameObject, biome: Biome
   ctx.fillStyle = isGold ? "#ebdca3" : biome === Biome.Desert ? "#b2ab90" : "#bcbcbc";
   renderStar(ctx, 3, obj.scale * 0.55, obj.scale * 0.65);
   ctx.fill();
+}
+
+export function gameObjectTurn(obj: GameObject): number {
+  if (obj.turnOf !== obj.sid) {
+    obj.turnOf = obj.sid;
+    obj.turn = seededRandom(`turn:${obj.sid}`).float(0, Math.PI);
+  }
+  return obj.turn ?? 0;
 }

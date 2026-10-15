@@ -1,10 +1,14 @@
 import { outlineWidth, paletteColors } from "../../config";
 import { itemData, items, type Item } from "../../data/items";
 import type { GameObject } from "../../entities/GameObject";
-import { randInt, TAU } from "../../utils/math";
+import { seededRandom, TAU, type SeededRandom } from "../../utils/math";
 import { renderCircle, renderLeaf, renderRect, renderRectCircle, renderStar, renderTriangle } from "../canvas/shapes";
 
 const cache: HTMLCanvasElement[] = [];
+
+export function clearItemSprites(): void {
+  cache.length = 0;
+}
 
 export function getItemSprite(item: Item | GameObject, forIcon = false): HTMLCanvasElement {
   const definition = "isItem" in item ? items[(item as GameObject).id ?? 0] : (item as Item);
@@ -14,6 +18,7 @@ export function getItemSprite(item: Item | GameObject, forIcon = false): HTMLCan
     if (cached) return cached;
   }
 
+  const random = seededRandom(`item:${definition.id}`);
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height =
     definition.scale * 2.5 + outlineWidth + (itemData.list[definition.id].spritePadding ?? 0);
@@ -24,13 +29,13 @@ export function getItemSprite(item: Item | GameObject, forIcon = false): HTMLCan
   ctx.strokeStyle = paletteColors.outline;
   ctx.lineWidth = outlineWidth * (forIcon ? canvas.width / 81 : 1);
 
-  renderItem(ctx, definition);
+  renderItem(ctx, definition, random);
 
   if (!forIcon) cache[definition.id] = canvas;
   return canvas;
 }
 
-function renderItem(ctx: CanvasRenderingContext2D, item: Item): void {
+function renderItem(ctx: CanvasRenderingContext2D, item: Item, random: SeededRandom): void {
   const scale = item.scale;
 
   switch (item.name) {
@@ -47,14 +52,14 @@ function renderItem(ctx: CanvasRenderingContext2D, item: Item): void {
       ctx.fillStyle = "#cca861";
       renderCircle(ctx, 0, 0, scale);
       ctx.fillStyle = "#937c4b";
-      speckle(ctx, scale);
+      speckle(ctx, scale, random);
       return;
 
     case "cheese":
       ctx.fillStyle = "#f4f3ac";
       renderCircle(ctx, 0, 0, scale);
       ctx.fillStyle = "#c3c28b";
-      speckle(ctx, scale);
+      speckle(ctx, scale, random);
       return;
 
     case "wood wall":
@@ -196,11 +201,11 @@ function renderItem(ctx: CanvasRenderingContext2D, item: Item): void {
   }
 }
 
-function speckle(ctx: CanvasRenderingContext2D, scale: number): void {
+function speckle(ctx: CanvasRenderingContext2D, scale: number, random: SeededRandom): void {
   const count = 4;
   const step = TAU / count;
   for (let i = 0; i < count; ++i) {
-    const distance = randInt(scale / 2.5, scale / 1.7);
-    renderCircle(ctx, distance * Math.cos(step * i), distance * Math.sin(step * i), randInt(4, 5), true);
+    const distance = random.int(scale / 2.5, scale / 1.7);
+    renderCircle(ctx, distance * Math.cos(step * i), distance * Math.sin(step * i), random.int(4, 5), true);
   }
 }

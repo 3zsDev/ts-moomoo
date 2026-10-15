@@ -6,13 +6,14 @@ import {
 } from "../../net/api";
 import type { SimClient } from "../client";
 import {
-  accessories, Animal, AnimalManager, ClientPacket, config, findAccessory, findHat,
+  accessories, ClientPacket, config, findAccessory, findHat,
   fixTo, GameObject, getDirection, getDistance, hats, itemData, ObjectManager, Player,
   Projectile, ProjectileManager, randInt, ServerPacket,
   type Cosmetic, type Damageable, type MsgPackValue, type ServerHooks,
 } from "../../shared";
+import { Animal, AnimalManager, animalKinds } from "../animals";
 import { createSimPlugin, type SimHost, type SimPlugin } from "../plugin";
-import { canRunAdminCommand, runAdminCommand } from "./admin";
+import { adminState, adminWorld, canRunAdminCommand, runAdminCommand, type AdminState, type AdminWorld } from "./admin";
 import { arenaBosses } from "./arena";
 import { ClanManager } from "./clans";
 import { FallsDirector } from "./falls";
@@ -24,6 +25,7 @@ const LEADERBOARD_INTERVAL = 1000;
 const ANON_COOLDOWN = 30000;
 const GOLD_INTERVAL = 1000;
 const LEADERBOARD_SIZE = 10;
+const CROWN_RANKS = 3;
 const MAX_CHAT_LENGTH = 30;
 
 function capChatLength(text: string): string {
@@ -96,6 +98,7 @@ export class Game implements SimHost {
   private running = false;
   private shutdownNoticeSent = false;
   private topClan: string | null = null;
+  private readonly crownRanks = new Map<Player, number>();
   private spin: ReturnType<typeof setImmediate> | null = null;
 
   public constructor() {
@@ -131,10 +134,11 @@ export class Game implements SimHost {
     return this.clientsByPlayer.size;
   }
 
-  public onlinePlayers(): { account: string | null; name: string; score: number; anon: boolean; shadow: boolean }[] {
+  public onlinePlayers(): { sid: number; account: string | null; name: string; score: number; anon: boolean; shadow: boolean }[] {
     return [...this.clientsByPlayer.keys()].map((player) => {
       const session = this.sessions.get(player);
       return {
+        sid: player.sid,
         account: session?.account?.id ?? null,
         name: player.name,
         score: Math.round(player.points),
@@ -411,7 +415,9 @@ export class Game implements SimHost {
   }
 
   private sendJoinState(client: SimClient, player: Player): void {
-    client.send(ServerPacket.SetInitData, { teams: this.clans.snapshot() });
+    client.send(ServerPacket.SetInitData, {
+      teams: this.clans.snapshot(), animals: animalKinds() as unknown as MsgPackValue,
+    });
     client.send(ServerPacket.SetupGame, player.sid);
     client.send(ServerPacket.AddPlayer, player.getData() as unknown as MsgPackValue, 1);
     player.sentTo[player.id] = true;
@@ -715,6 +721,20 @@ export class Game implements SimHost {
     return matched;
   }
 
+  public staffCommand(sid: number, args: MsgPackValue[], role: string | null): { error: "not found" | "rank" } | { state: AdminState } {
+    const player = this.findPlayer(sid);
+    if (!player?.alive) return { error: "not found" };
+    if (args[0] !== "state") {
+      if (!canRunAdminCommand(role, args[0])) return { error: "rank" };
+      runAdminCommand(this, player, args);
+    }
+    return { state: adminState(player) };
+  }
+
+  public staffWorld(): AdminWorld {
+    return adminWorld(this);
+  }
+
   public kick(player: Player, reason: string): void {
     const client = this.clientsByPlayer.get(player);
     if (!client) return;
@@ -804,6 +824,17 @@ export class Game implements SimHost {
     client.send(ServerPacket.AddPlayer, player.getData() as unknown as MsgPackValue, 1);
     player.sentTo[player.id] = true;
     this.sendOwnState(client, player);
+  }
+
+  public setDive(player: Player, dive: number, diveMs: number): void {
+    player.dive = dive;
+    player.diveAt = Date.now();
+    player.diveMs = diveMs;
+    for (const viewer of this.players) {
+      if (viewer === player || (viewer.alive && player.sentTo[viewer.id])) {
+        this.sendTo(viewer, ServerPacket.UpdateDive, player.sid, dive, diveMs);
+      }
+    }
   }
 
   public findPlayer(sid: number): Player | undefined {
@@ -1153,12 +1184,11 @@ export class Game implements SimHost {
     if (this.leaderboardTimer < LEADERBOARD_INTERVAL) return;
     this.leaderboardTimer -= LEADERBOARD_INTERVAL;
 
-    this.updateKillLeader();
-
     const ranked = this.players
       .filter((player) => player.alive || (this.clientsByPlayer.has(player) && player.points > 0))
       .sort((a, b) => b.points - a.points)
       .slice(0, LEADERBOARD_SIZE);
+    this.updateIcons(ranked);
 
     const rows: MsgPackValue[] = [];
     const roles: MsgPackValue[] = [];
@@ -1179,7 +1209,10 @@ export class Game implements SimHost {
     const crabKillers = ranked.filter((player) => this.falls.crabKillers.has(player.sid)).map((player) => player.sid);
     this.noteTopClan(ranked[0]);
 
-    this.hooks.broadcast(ServerPacket.UpdateLeaderboard, rows, roles, dead, crabKillers, clanTags, tribeTags);
+    const crowns: MsgPackValue[] = [];
+    this.crownRanks.forEach((rank, player) => crowns.push(player.sid, rank));
+
+    this.hooks.broadcast(ServerPacket.UpdateLeaderboard, rows, roles, dead, crabKillers, clanTags, tribeTags, crowns);
   }
 
   private noteTopClan(top: Player | undefined): void {
@@ -1194,12 +1227,23 @@ export class Game implements SimHost {
     if (!this.sessions.get(player)?.shadow) reportEvent({ kind: "boss", by: name });
   }
 
-  private updateKillLeader(): void {
+  private updateIcons(ranked: Player[]): void {
     let leader: Player | null = null;
     for (const player of this.players) {
       if (player.alive && player.kills > 0 && (!leader || player.kills > leader.kills)) leader = player;
     }
-    for (const player of this.players) player.iconIndex = player === leader ? 1 : 0;
+
+    this.crownRanks.clear();
+    for (const player of ranked) {
+      if (this.crownRanks.size >= CROWN_RANKS) break;
+      if (player.alive && player.points > 0) this.crownRanks.set(player, this.crownRanks.size + 1);
+    }
+
+    for (const player of this.players) {
+      const rank = this.crownRanks.get(player) ?? 0;
+      const skull = player === leader;
+      player.iconIndex = rank ? rank + (skull ? 4 : 1) : skull ? 1 : 0;
+    }
   }
 
   private tickMinimap(delta: number): void {

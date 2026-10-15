@@ -19,12 +19,10 @@ export const projectiles: Projectile[] = [];
 export const objectManager = new ObjectManager(gameObjects, config, players as unknown as Damageable[], null);
 
 export const projectileManager = new ProjectileManager(
-  projectiles, players as unknown as Damageable[], animals, objectManager, itemData, config, null,
+  projectiles, players as unknown as Damageable[], animals as unknown as Damageable[], objectManager, itemData, config, null,
 );
 
-export const animalManager = new AnimalManager(
-  animals, players as unknown as Damageable[], objectManager, config, null, null,
-);
+export const animalKinds = new AnimalManager(animals);
 
 export const textManager = new TextManager();
 
@@ -34,7 +32,7 @@ export function getOrCreatePlayer(id: string, sid: number): Player {
 
   const player = new Player(
     id, sid, config, projectileManager, objectManager,
-    players, animals, itemData, hats, accessories,
+    players, animals as unknown as Damageable[], itemData, hats, accessories,
   );
   players.push(player);
   return player;

@@ -7,6 +7,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const GAME_PORT = process.env.GAME_PORT ?? "3000";
 const SANDBOX_PORT = process.env.SANDBOX_PORT ?? "3001";
 const API_PORT = process.env.API_PORT ?? "8080";
+const API_URL = process.env.API_URL ?? `http://localhost:${API_PORT}`;
 
 const onlySandbox = process.argv.includes("--sandbox");
 const wsOnly = process.argv.includes("--ws");
@@ -76,6 +77,7 @@ if (withGame) {
       GAME_NAME: "1",
       GAME_SANDBOX: "0",
       GAME_API: withApi ? "1" : "0",
+      API_URL,
       GAME_PEER_URL: `http://localhost:${SANDBOX_PORT}/`,
     },
   });
@@ -88,6 +90,7 @@ if (withSandbox) {
       GAME_NAME: "sandbox",
       GAME_SANDBOX: "1",
       GAME_API: withApi ? "1" : "0",
+      API_URL,
       GAME_PEER_URL: `http://localhost:${GAME_PORT}/`,
     },
   });

@@ -1,6 +1,5 @@
-import {
-  type AnimalManager, config, itemData, type MsgPackValue, type Player, ServerPacket, weaponVariants,
-} from "../../shared";
+import { config, itemData, type MsgPackValue, type Player, ServerPacket, weaponVariants } from "../../shared";
+import type { AnimalManager } from "../animals";
 import type { ClanManager } from "./clans";
 
 export interface AdminHost {
@@ -10,6 +9,7 @@ export interface AdminHost {
   readonly clans: ClanManager;
 
   refreshPlayer(player: Player): void;
+  setDive(player: Player, dive: number, diveMs: number): void;
   findPlayer(sid: number): Player | undefined;
   sendTo(player: Player, packet: string, ...args: MsgPackValue[]): void;
 }
@@ -36,6 +36,65 @@ function teleport(player: Player, x: number, y: number): void {
 
 const MOD_COMMANDS = new Set(["noclip"]);
 
+export interface AdminState {
+  god: boolean;
+  aura: boolean;
+  boss: boolean;
+  invisible: boolean;
+  noclip: boolean;
+  disguised: boolean;
+  morph: number;
+  dive: number;
+  size: number;
+  power: number;
+  speed: number;
+  health: number;
+}
+
+export interface AdminWorld {
+  tribes: string[];
+  mobs: { type: number; name: string }[];
+  animalKinds: { id: number; name: string; src: string }[];
+}
+
+export function adminState(player: Player): AdminState {
+  return {
+    god: player.powers.god,
+    aura: player.aura,
+    boss: player.bossMode,
+    invisible: player.powers.invisible,
+    noclip: player.powers.noclip,
+    disguised: player.disguised,
+    morph: player.morph,
+    dive: player.dive,
+    size: player.powers.size,
+    power: player.powers.damage,
+    speed: player.powers.speed,
+    health: player.powers.health,
+  };
+}
+
+function kindName(kind: { name?: string; src: string }): string {
+  if (kind.name) return kind.name;
+  const base = kind.src.replace(/_\d+$/, "");
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+export function adminWorld(host: AdminHost): AdminWorld {
+  const types = host.animalManager.animalTypes;
+  const mobs = new Map<number, string>();
+  for (const animal of host.animals) {
+    const type = types[animal.index];
+    if (!animal.active || animal.spawnCounter || !type?.name || mobs.has(animal.index)) continue;
+    mobs.set(animal.index, animal.name || type.name);
+  }
+  return {
+    tribes: host.clans.clans.map((clan) => clan.sid),
+    mobs: [...mobs].sort((a, b) => a[0] - b[0]).map(([type, name]) => ({ type, name })),
+    animalKinds: types.map((type) => ({ id: type.id, name: kindName(type), src: type.src })),
+  };
+}
+
 export function canRunAdminCommand(role: string | null | undefined, command: MsgPackValue | undefined): boolean {
   return role === "admin" || (role === "mod" && MOD_COMMANDS.has(String(command ?? "")));
 }
@@ -51,10 +110,28 @@ export function runAdminCommand(host: AdminHost, player: Player, args: MsgPackVa
 
     case "invisible":
       player.powers.invisible = on;
+      player.invisible = on;
+      host.refreshPlayer(player);
       return;
 
     case "aura":
       player.aura = on;
+      host.refreshPlayer(player);
+      return;
+
+    case "morph": {
+      const kind = finite(args[1], -1);
+      player.morph = host.animalManager.animalTypes[kind] ? kind : -1;
+      host.refreshPlayer(player);
+      return;
+    }
+
+    case "dive":
+      host.setDive(player, Math.min(3, Math.max(0, Math.round(finite(args[1])))), Math.max(0, finite(args[2])));
+      return;
+
+    case "disguise":
+      player.disguised = on;
       host.refreshPlayer(player);
       return;
 

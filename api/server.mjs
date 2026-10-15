@@ -72,6 +72,7 @@ let bundle = process.env.API_BUNDLE || null;
 const ctx = {
   store,
   servers,
+  liveServers,
   notifyServers,
   hub: new PageHub(),
   presence: new Presence(HEARTBEAT_TIMEOUT, (id, server) => presenceChanged(ctx, id, server)),
@@ -149,7 +150,14 @@ function shareLinkRedirect(pathname) {
   }
 }
 
+function staffPath(pathname) {
+  const match = /^\/staff\/([^/]+)\/(.*)$/.exec(pathname);
+  if (!match || existsSync(path.join(PUBLIC_DIR, "staff", match[1]))) return pathname;
+  return `/staff/${match[2]}`;
+}
+
 function serveStatic(req, res, pathname) {
+  pathname = staffPath(pathname);
   const redirect = shareLinkRedirect(pathname);
   if (redirect) {
     res.writeHead(302, { Location: redirect, "Cache-Control": "no-store" });

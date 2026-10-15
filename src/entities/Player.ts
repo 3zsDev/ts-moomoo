@@ -23,6 +23,7 @@ export type PlayerInitData = [
   x: number, y: number, dir: number,
   health: number, maxHealth: number, scale: number, skinColor: number,
   aura?: number, bossMode?: number, clan?: string | null,
+  morph?: number, dive?: number, invisible?: number, disguised?: number,
 ];
 
 // admin powers
@@ -58,6 +59,13 @@ export class Player implements Damageable, Interpolated {
   public bossMode = false;
   public clan: string | null = null;
   public member = false;
+
+  public morph = -1;
+  public dive = 0;
+  public diveAt = 0;
+  public diveMs: number | undefined;
+  public invisible = false;
+  public disguised = false;
 
   public iconIndex = 0;
 
@@ -263,6 +271,7 @@ export class Player implements Damageable, Interpolated {
       fixTo(this.x, 2), fixTo(this.y, 2), fixTo(this.dir, 3),
       this.health, this.maxHealth, this.scale, this.skinColor,
       this.aura ? 1 : 0, this.bossMode ? 1 : 0, this.clan,
+      this.morph, this.dive, this.invisible ? 1 : 0, this.disguised ? 1 : 0,
     ];
   }
 
@@ -272,6 +281,15 @@ export class Player implements Damageable, Interpolated {
     this.aura = !!data[10];
     this.bossMode = !!data[11];
     this.clan = data[12] || null;
+    this.morph = typeof data[13] === "number" ? data[13] : -1;
+    this.dive = data[14] || 0;
+    this.invisible = !!data[15];
+    this.disguised = !!data[16];
+    this.diveAt = Date.now();
+  }
+
+  public get isKillLeader(): boolean {
+    return this.iconIndex === 1 || this.iconIndex >= 5;
   }
 
   public update(delta: number): void {
@@ -798,7 +816,7 @@ export class Player implements Damageable, Interpolated {
       const effect = accessoryEffect(killer.tail);
       let reward = killer.skin?.goldSteal ? Math.round(this.points / 2) : Math.round(this.age * 100 * (killer.skin?.kScrM ?? 1));
 
-      if (effect?.leaderKillMult && this.iconIndex === 1) reward *= effect.leaderKillMult;
+      if (effect?.leaderKillMult && this.isKillLeader) reward *= effect.leaderKillMult;
       const spike = source as { isItem?: boolean; owner?: unknown } | undefined;
       if (effect?.spikeKillMult && spike?.isItem && spike.owner === killer) reward *= effect.spikeKillMult;
       if (effect?.killBuff) {

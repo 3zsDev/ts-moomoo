@@ -63,6 +63,10 @@ function hash(a: number, b: number): number {
 
 let chevron: HTMLCanvasElement | null = null;
 
+export function resetChevron(): void {
+  chevron = null;
+}
+
 function chevronSprite(): HTMLCanvasElement {
   if (chevron) return chevron;
   chevron = document.createElement("canvas");

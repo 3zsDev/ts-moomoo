@@ -10,7 +10,6 @@ const CLAN_KEEP = 100;
 const WHISPER_KEEP = 50;
 const MAX_FRIENDS = 500;
 const INVITE_GAP = 30 * 1000;
-const TOP_NOW = 10;
 const NOTICE_MAX = 24 * 60 * 60 * 1000;
 
 const tickets = new RateLimiter(30, 60 * 1000);
@@ -161,6 +160,16 @@ async function sendChat(ctx, body, kind) {
   return ok({ to: recipient.name });
 }
 
+export function setNotice(ctx, body) {
+  const text = cleanText(body.text);
+  const minutes = Number(body.minutes);
+  const until = Number(body.until) || (Number.isFinite(minutes) && minutes > 0 ? Date.now() + minutes * 60 * 1000 : Date.now() + 60 * 60 * 1000);
+  ctx.store.data.notice = text ? { text, until: Math.min(until, Date.now() + NOTICE_MAX) } : null;
+  ctx.store.save();
+  ctx.hub.broadcast("notice", ctx.store.data.notice ?? {});
+  return ctx.store.data.notice;
+}
+
 export const socialRoutes = {
   "POST /page/ticket": async (ctx, { body, ip }) => {
     if (!tickets.allow(ip)) return fail(429, "slow down");
@@ -249,17 +258,7 @@ export const socialRoutes = {
     return ok({ online });
   },
 
-  "GET /top-now": async (ctx) => ok(ctx.presence.top(TOP_NOW).map((entry) => ({ ...entry, server: ctx.listKey(entry.server) }))),
-
-  "POST /internal/notice": internalOnly(async (ctx, { body }) => {
-    const text = cleanText(body.text);
-    const minutes = Number(body.minutes);
-    const until = Number(body.until) || (Number.isFinite(minutes) && minutes > 0 ? Date.now() + minutes * 60 * 1000 : Date.now() + 60 * 60 * 1000);
-    ctx.store.data.notice = text ? { text, until: Math.min(until, Date.now() + NOTICE_MAX) } : null;
-    ctx.store.save();
-    ctx.hub.broadcast("notice", ctx.store.data.notice ?? {});
-    return ok({ notice: ctx.store.data.notice });
-  }),
+  "POST /internal/notice": internalOnly(async (ctx, { body }) => ok({ notice: setNotice(ctx, body) })),
 
   "POST /internal/bundle": internalOnly(async (ctx, { body }) => {
     const name = typeof body.name === "string" && /^[\w.-]{1,64}$/.test(body.name) ? body.name : null;

@@ -2,10 +2,8 @@ import { state } from "../game/state";
 import { leaveSession } from "../game/session";
 import { connection } from "../net/Connection";
 import {
-  onPlayerStats as onStatsPacket, reportPlayer, requestPlayerStats as requestStatsPacket,
-  sendAdminCommand as sendAdminPacket, type PlayerStats,
+  onPlayerStats as onStatsPacket, reportPlayer, requestPlayerStats as requestStatsPacket, type PlayerStats,
 } from "../net/handlers";
-import type { MsgPackValue } from "../net/msgpack";
 import { ui } from "./elements";
 
 export function isAlive(): boolean {
@@ -27,10 +25,6 @@ export function sendReport(sid: number, level?: 1 | 2): void {
 
 export function sendReportReason(sid: number, reason: number): void {
   reportPlayer(sid, 0, reason);
-}
-
-export function sendAdminCommand(command: string, ...args: MsgPackValue[]): void {
-  sendAdminPacket(command, ...args);
 }
 
 export function requestPlayerStats(sid: number): void {

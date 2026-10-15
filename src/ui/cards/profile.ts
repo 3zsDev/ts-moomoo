@@ -476,16 +476,6 @@ export function openGuestProfile(sid: number, name: string): void {
   renderStats(shown);
 }
 
-export function openGuestRecord(id: string, name: string): void {
-  shown = { name, guest: true };
-  resetCard(name);
-  card.role.textContent = "Guest";
-  card.status.textContent = "";
-  card.root.classList.remove("loading");
-  subscribeLive(-1);
-  renderStaffPanel(card.actions, card.status, { id });
-}
-
 export function closeProfile(): void {
   shown = null;
   awaitingGuestId = false;

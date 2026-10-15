@@ -1,6 +1,7 @@
 import type { Painter } from "../painter";
-import { animalTypes } from "../../data/animals";
 import type { Animal } from "../../entities/Animal";
+import type { Player } from "../../entities/Player";
+import { animalKinds } from "../../game/world";
 import { sprites, type LoadedImage } from "../sprites";
 
 const SUBMERGED_TINT = "#0b2a4a";
@@ -10,15 +11,46 @@ export function renderAnimal(painter: Painter, animal: Animal): void {
   const image = sprites.animal(animal.src);
   if (!image.isLoaded) return;
 
-  const radius = animal.scale * 1.2 * (animal.spriteMlt ?? 1);
-  if (animal.isBoss || animalTypes[animal.index]?.diver) {
+  const radius = animal.scale * 1.2 * (animal.spriteMlt || 1);
+  if (animal.isBoss || animalKinds.kind(animal.index)?.diver) {
     renderDiver(painter, animal, image, radius, Date.now());
     return;
   }
   painter.drawImage(image, -radius, -radius, radius * 2, radius * 2);
 }
 
-function renderDiver(painter: Painter, animal: Animal, image: LoadedImage, radius: number, now: number): void {
+interface DiveView {
+  state: number;
+  stateAt: number;
+  isBoss: boolean;
+}
+
+export function renderMorph(painter: Painter, player: Player): void {
+  const kind = animalKinds.kind(player.morph);
+  if (!kind) return;
+  const image = sprites.animal(kind.src);
+  if (!image.isLoaded) return;
+
+  const radius = player.scale * 1.2 * (kind.spriteMlt || 1);
+  if (player.dive || kind.boss || kind.diver) {
+    const view = { state: player.dive || 0, stateAt: player.diveAt, isBoss: !(player.diveMs !== undefined && player.diveMs < 1000) };
+    renderDiver(painter, view, image, radius, Date.now());
+    return;
+  }
+  painter.drawImage(image, -radius, -radius, radius * 2, radius * 2);
+}
+
+export function renderDiveDisc(painter: Painter, player: Player): void {
+  const progress = player.dive === 3
+    ? Math.min(1, (Date.now() - (player.diveAt || 0)) / (player.diveMs || 1650))
+    : 0;
+  painter.globalAlpha = 0.3 + 0.3 * progress;
+  painter.fillStyle = SUBMERGED_TINT;
+  painter.disc(0, 0, player.scale * (SUBMERGED_SCALE + (1 - SUBMERGED_SCALE) * progress));
+  painter.globalAlpha = 1;
+}
+
+function renderDiver(painter: Painter, animal: DiveView, image: LoadedImage, radius: number, now: number): void {
   painter.save();
   const elapsed = now - (animal.stateAt || 0);
 

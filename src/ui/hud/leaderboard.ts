@@ -11,6 +11,16 @@ import { mySid } from "../netBridge";
 
 const ROLE_CLASSES = ["", "mod", "admin"];
 const ROLE_TITLES = ["Signed-in player", "Moderator", "Admin"];
+const RANK_TITLES = ["", "First", "Second", "Third"];
+const RANK_CROWNS = ["", "crown_gold", "crown_silver", "crown_bronze"];
+
+export function crownImage(rank: number): HTMLImageElement {
+  const img = document.createElement("img");
+  img.className = "crown";
+  img.src = imageUrl(`icons/${RANK_CROWNS[rank]}.png`);
+  img.alt = img.title = RANK_TITLES[rank];
+  return img;
+}
 
 export const SOLO_TRIBE = "solo";
 
@@ -72,13 +82,15 @@ export function refreshLeaderboard(
   crabKillers?: number[],
   clanTags?: (string | number)[],
   tribeTags?: (string | number)[],
+  ranks?: number[],
 ): void {
   lastRows = rows;
-  lastUpdate = [rows, roles, dead, crabKillers, clanTags, tribeTags];
+  lastUpdate = [rows, roles, dead, crabKillers, clanTags, tribeTags, ranks];
   const ownName = ownLeaderboardName();
   const roleOf = pairs<number>(roles);
   const clanOf = pairs<string>(clanTags);
   const tribeOf = pairs<string>(tribeTags);
+  const rankOf = pairs<number>(ranks);
   const me = mySid();
   const staff = isStaff();
   const social = friends.state();
@@ -98,6 +110,7 @@ export function refreshLeaderboard(
     const signedIn = sid in roleOf;
     const role = roleOf[sid] || 0;
     const isDead = Boolean(dead?.includes(sid));
+    const rank = rankOf[sid] || 0;
     if (signedIn) sids[name] = sid;
 
     const open = signedIn
@@ -128,6 +141,9 @@ export function refreshLeaderboard(
     let badge: HTMLElement;
     if (crabKillers?.includes(sid)) {
       badge = createElement({ tag: "span", class: "leaderBadge crab", title: "Killed the Crab King", text: "\u{1F980}" });
+    } else if (rank) {
+      badge = createElement({ tag: "span", class: "leaderBadge crowned" });
+      badge.appendChild(crownImage(rank));
     } else if (signedIn) {
       badge = createElement({
         tag: "i",

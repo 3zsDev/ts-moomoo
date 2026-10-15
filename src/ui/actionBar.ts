@@ -117,4 +117,35 @@ export function refreshActionBar(list?: number[], isWeapons?: boolean): void {
     const slot = document.getElementById(actionBarSlotId(i));
     if (slot) slot.style.display = me.weapons[weapon.type] === weapon.id ? "inline-block" : "none";
   }
+  packActionBar();
 }
+
+const MAX_PACKED_ROWS = 3;
+
+function packActionBar(): void {
+  const bar = ui.actionBar;
+  bar.style.removeProperty("--bar-slot");
+  bar.classList.remove("packed");
+  const shown = Array.prototype.filter.call(bar.children, (slot: HTMLElement) => slot.style.display !== "none") as HTMLElement[];
+  if (!shown.length) return;
+
+  const slotStyle = getComputedStyle(shown[0]);
+  const width = shown[0].offsetWidth;
+  const margin = parseFloat(slotStyle.marginLeft) + parseFloat(slotStyle.marginRight);
+  if (!bar.clientWidth || !width || shown.length <= Math.floor(bar.clientWidth / (width + margin))) return;
+
+  bar.classList.add("packed");
+  const barStyle = getComputedStyle(bar);
+  const inner = bar.clientWidth - parseFloat(barStyle.paddingLeft) - parseFloat(barStyle.paddingRight);
+  const height = 2 * (width + margin);
+  let size = 0;
+  for (let rows = 2; rows <= MAX_PACKED_ROWS; rows++) {
+    const fit = Math.floor(inner / Math.ceil(shown.length / rows)) - margin;
+    size = Math.max(size, Math.min(width, fit, Math.floor(height / rows) - margin));
+  }
+  bar.style.setProperty("--bar-slot", `${Math.max(20, size)}px`);
+}
+
+window.addEventListener("resize", () => {
+  if (state.me) packActionBar();
+});

@@ -1,6 +1,8 @@
 import { state } from "../../game/state";
-import { gameObjects } from "../../game/world";
+import { animalKinds, gameObjects } from "../../game/world";
 import type { Alliance } from "../../game/state";
+import type { AnimalKind } from "../../data/animals";
+import { warmAnimalSprites } from "../../render/sprites";
 
 export interface HandlerHooks {
   onDisconnect(reason: string): void;
@@ -15,8 +17,12 @@ export function setHooks(value: HandlerHooks): void {
   hooks = value;
 }
 
-export function setInitData(data: { teams: Alliance[] }): void {
+export function setInitData(data: { teams: Alliance[]; animals?: AnimalKind[] }): void {
   state.alliances = data.teams ?? [];
+  if (data.animals) {
+    animalKinds.setKinds(data.animals);
+    warmAnimalSprites(animalKinds.kinds);
+  }
 }
 
 export function disconnect(reason: string): void {

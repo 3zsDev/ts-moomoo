@@ -40,6 +40,7 @@ export function createHandlers(hooks: session.HandlerHooks): PacketHandlers {
     [ServerPacket.UpdateItems]: players.updateItems,
     [ServerPacket.UpdateAge]: players.updateAge,
     [ServerPacket.UpdateUpgrades]: players.updateUpgrades,
+    [ServerPacket.UpdateDive]: players.updateDive,
     [ServerPacket.UpdateLeaderboard]: refreshLeaderboard,
 
     [ServerPacket.LoadGameObject]: world.loadGameObject,

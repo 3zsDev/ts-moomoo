@@ -204,6 +204,7 @@ export function createCanvasPainter(target: HTMLCanvasElement): Painter {
     },
 
     endFrame: () => {},
+    rebuild: () => {},
   };
   return painter;
 }

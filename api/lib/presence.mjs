@@ -3,7 +3,9 @@ const MAX_PLAYERS = 200;
 function cleanPlayer(raw) {
   if (!raw || typeof raw !== "object") return null;
   const score = Number(raw.score);
+  const sid = Number(raw.sid);
   return {
+    sid: Number.isInteger(sid) && sid > 0 ? sid : null,
     account: raw.account != null && raw.account !== "" ? String(raw.account) : null,
     name: String(raw.name ?? "").slice(0, 30),
     score: Number.isFinite(score) && score > 0 ? Math.min(Math.round(score), 1e9) : 0,
@@ -63,25 +65,16 @@ export class Presence {
     return null;
   }
 
+  playersOn(serverId) {
+    const entry = this.servers.get(serverId);
+    return entry && this.alive(entry) ? entry.players : [];
+  }
+
   playing(accountId) {
     const now = Date.now();
     for (const [serverId, entry] of this.servers) {
       if (this.alive(entry, now) && entry.accounts.has(accountId)) return serverId;
     }
     return null;
-  }
-
-  top(size) {
-    const now = Date.now();
-    const players = [];
-    for (const [serverId, entry] of this.servers) {
-      if (entry.sandbox || !this.alive(entry, now)) continue;
-      for (const player of entry.players) {
-        if (player.anon || player.shadow || !player.name || player.score <= 0) continue;
-        players.push({ name: player.name, score: player.score, server: serverId });
-      }
-    }
-    players.sort((a, b) => b.score - a.score);
-    return players.slice(0, size);
   }
 }

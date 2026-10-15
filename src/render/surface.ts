@@ -65,6 +65,11 @@ export function endFrame(): void {
   if (textLayer.overlay) overlayPainter.endFrame();
 }
 
+export function rebuildPainters(): void {
+  painter.rebuild();
+  overlayPainter.rebuild();
+}
+
 export const view = {
   width: config.maxScreenWidth,
   height: config.maxScreenHeight,

@@ -1,6 +1,7 @@
 import { serverConfig } from "../../config";
+import { type Animal, type AnimalController, type AnimalManager, AnimalState } from "../animals";
 import {
-  type Animal, type AnimalController, type AnimalManager, AnimalState, config, confineToWorld,
+  config, confineToWorld,
   type Damageable, getDirection, getDistance, inFallsWater, type Player, randFloat, randInt,
   ServerPacket, type ServerHooks, turnToward,
 } from "../../shared";

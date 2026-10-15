@@ -1,11 +1,11 @@
 import { config } from "../../config";
 import type { Player } from "../../entities/Player";
-import { animals, players } from "../../game/world";
+import { animalKinds, animals, players } from "../../game/world";
 import { state } from "../../game/state";
 import { getAimAngle } from "../../input";
 import { camera } from "../camera";
 import { painter } from "../surface";
-import { renderAnimal, renderPlayer } from "../draw";
+import { renderAnimal, renderDiveDisc, renderMorph, renderPlayer } from "../draw";
 
 export function renderAI(delta: number): void {
   painter.globalAlpha = 1;
@@ -33,12 +33,27 @@ export function renderPlayers(delta: number, zIndex: number): void {
     player.animate(delta);
     if (!player.visible) continue;
 
+    painter.globalAlpha = player.invisible ? 0.5 : 1;
     player.skinRot += 0.002 * delta;
 
     const facing = (player === state.me ? getAimAngle() : player.dir) + player.dirPlus;
 
     painter.save();
     painter.translate(player.x - camera.left, player.y - camera.top);
+
+    if (player.morph >= 0 && animalKinds.kind(player.morph)) {
+      if (player.aura) renderAura(player);
+      painter.rotate(facing - Math.PI / 2);
+      renderMorph(painter, player);
+      painter.restore();
+      continue;
+    }
+    if (player.dive) {
+      renderDiveDisc(painter, player);
+      painter.restore();
+      continue;
+    }
+
     const ratio = player.scale / config.playerScale;
     const drawn = ratio === 1 ? player : (Object.create(player, { scale: { value: config.playerScale } }) as Player);
     if (ratio !== 1) painter.scale(ratio, ratio);
@@ -47,6 +62,7 @@ export function renderPlayers(delta: number, zIndex: number): void {
     renderPlayer(painter, drawn);
     painter.restore();
   }
+  painter.globalAlpha = 1;
 }
 
 // admins have weird render thing, joshy wants to look like pretty princess

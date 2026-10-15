@@ -61,6 +61,7 @@ export interface WebGLPainter extends Painter {
   drawCalls: number;
   atlasResets: number;
   contextRestores: number;
+  rebuilds: number;
   pageOf(source: PainterImage): number | undefined;
   atlasInfo(): { pageSize: number; pages: { areaUsed: number; heightReached: number }[]; sprites: number };
   dumpAtlas(): HTMLCanvasElement[];
@@ -486,6 +487,7 @@ export function createWebGLPainter(target: HTMLCanvasElement, options: WebGLPain
     drawCalls: 0,
     atlasResets: 0,
     contextRestores: 0,
+    rebuilds: 0,
 
     save() {
       stack.push(a, b, c, d, e, f, painter.fillStyle, painter.strokeStyle, painter.lineWidth, painter.globalAlpha);
@@ -730,6 +732,14 @@ export function createWebGLPainter(target: HTMLCanvasElement, options: WebGLPain
       frameDrawCalls = 0;
     },
 
+    rebuild() {
+      if (gl.isContextLost()) return;
+      quads = 0;
+      cache.clear();
+      resetAtlas();
+      painter.rebuilds++;
+    },
+
     pageOf(source) {
       return sprites.get(source)?.page;
     },
@@ -779,6 +789,7 @@ export function createWebGLPainter(target: HTMLCanvasElement, options: WebGLPain
     quads = 0;
   });
   target.addEventListener("webglcontextrestored", () => {
+    cache.clear();
     setup();
     painter.contextRestores++;
   });

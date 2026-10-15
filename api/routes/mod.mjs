@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 
-import { fail, ok } from "../lib/http.mjs";
+import { fail, internalHeaders, ok } from "../lib/http.mjs";
 import { isStaff, signedIn } from "./accounts.mjs";
+import { setNotice } from "./social.mjs";
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const LEVELS = new Set(["ban", "shadow", "clear"]);
@@ -10,6 +11,8 @@ const SAID_KEEP = 200;
 const SAID_KINDS = new Set(["game", "clan", "whisper"]);
 const KICK_LOCK_SECONDS = Number(process.env.KICK_LOCK_SECONDS ?? 300);
 const IP_SALT = process.env.IP_HASH_SALT ?? process.env.INTERNAL_KEY ?? "moomoo";
+const ADMIN_ARGS = 4;
+const RESTART_MAX = 3600;
 
 function hashIp(ip) {
   return createHash("sha256").update(`${IP_SALT}:${ip}`).digest("hex").slice(0, 12);
@@ -129,7 +132,105 @@ async function staffCall(ctx, body) {
   return { actor, subject };
 }
 
+async function adminCall(ctx, body) {
+  const actor = await signedIn(ctx, body.auth);
+  if (actor?.role !== "admin") return { error: fail(403, "rank") };
+  return { actor };
+}
+
+function liveServer(ctx, key) {
+  if (typeof key !== "string" || !key) return null;
+  return ctx.liveServers().find((beat) => beat.key === key || ctx.listKey(beat.key) === key) ?? null;
+}
+
+async function askServer(ctx, key, route, body) {
+  const server = liveServer(ctx, key);
+  if (!server) return fail(404, "not found");
+  try {
+    const response = await fetch(`${server.url}${route}`, {
+      method: "POST",
+      headers: internalHeaders(),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(4000),
+    });
+    return { status: response.status, body: await response.json() };
+  } catch {
+    return fail(503, "unavailable");
+  }
+}
+
+function adminArgs(raw) {
+  if (!Array.isArray(raw) || !raw.length || raw.length > ADMIN_ARGS || typeof raw[0] !== "string") return null;
+  const args = [];
+  for (const value of raw) {
+    if (typeof value === "number" && Number.isFinite(value)) args.push(value);
+    else if (typeof value === "string") args.push(value.slice(0, 30));
+    else if (value === null) args.push(null);
+    else return null;
+  }
+  return args;
+}
+
 export const modRoutes = {
+  "POST /mod/servers": async (ctx, { body }) => {
+    const actor = await signedIn(ctx, body.auth);
+    if (!isStaff(actor)) return fail(403, "rank");
+
+    const servers = ctx.liveServers().map((beat) => ({
+      key: ctx.listKey(beat.key),
+      region: beat.region,
+      name: beat.name,
+      sandbox: beat.sandbox,
+      playerCount: beat.playerCount ?? 0,
+      restartAt: beat.restartAt > Date.now() ? beat.restartAt : undefined,
+      players: ctx.presence.playersOn(beat.key).map((player) => ({
+        sid: player.sid,
+        name: player.name,
+        account: player.account,
+        score: player.score,
+        anon: player.anon,
+        shadow: player.shadow,
+      })),
+    }));
+    return ok({ servers });
+  },
+
+  "POST /mod/admin": async (ctx, { body }) => {
+    const actor = await signedIn(ctx, body.auth);
+    if (!isStaff(actor)) return fail(403, "rank");
+
+    const sid = Number(body.sid);
+    const args = adminArgs(body.args);
+    if (!Number.isInteger(sid) || sid <= 0 || !args) return fail(400, "invalid");
+    return askServer(ctx, body.server, "/internal/admin", { sid, args, role: actor.role, by: actor.name ?? actor.id });
+  },
+
+  "POST /mod/world": async (ctx, { body }) => {
+    const { error } = await adminCall(ctx, body);
+    if (error) return error;
+    return askServer(ctx, body.server, "/internal/world", {});
+  },
+
+  "POST /mod/notice": async (ctx, { body }) => {
+    const { error } = await adminCall(ctx, body);
+    if (error) return error;
+    if (body.text !== undefined && typeof body.text !== "string") return fail(400, "invalid");
+    return ok({ notice: setNotice(ctx, { text: body.text, minutes: body.minutes }) });
+  },
+
+  "POST /mod/restart": async (ctx, { body }) => {
+    const { actor, error } = await adminCall(ctx, body);
+    if (error) return error;
+
+    const seconds = Number(body.seconds);
+    if (!Number.isFinite(seconds) || seconds < 0) return fail(400, "invalid");
+    const wait = Math.min(Math.round(seconds), RESTART_MAX);
+    const answer = await askServer(ctx, body.server, "/internal/shutdown", { seconds: wait });
+    if (answer.status === 200) console.log(`[mod] ${actor.name ?? actor.id} restarts ${body.server} in ${wait}s`);
+    return answer;
+  },
+
+
   "POST /mod/player": async (ctx, { body }) => {
     const { subject, error } = await staffCall(ctx, body);
     if (error) return error;

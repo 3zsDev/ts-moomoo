@@ -21,7 +21,7 @@ const wantBoth = !wantGame && !wantExtension;
 const makeGame = devMode || wantGame || wantBoth;
 const makeExtension = !devMode && (wantExtension || wantBoth);
 
-const VERSION = "1.4.8";
+const VERSION = "1.4.9";
 const DEV_PORT = 5173;
 
 const MATCHES = [
@@ -59,6 +59,14 @@ const BLOCK_RULES = [
       resourceTypes: ["script"],
     },
   },
+  // live's bundle, its libs and its service worker, whatever asks for them: a service worker's own fetches come
+  // through as "other", which rule 1 doesn't cover (src/extension/assetBridge.ts also removes the worker)
+  ...["assets/", "libs/", "service-worker.js"].map((file, index) => ({
+    id: 3 + index,
+    priority: 1,
+    action: { type: "block" },
+    condition: { urlFilter: `||moomoo.io/${file}` },
+  })),
 ];
 
 const REDIRECT_TYPES = ["stylesheet", "image", "font", "media"];
@@ -189,8 +197,29 @@ async function buildSdkTypeScriptPorts() {
   ]);
 }
 
+function staffOptions() {
+  return {
+    entryPoints: [path.join(root, "src/staff/main.ts")],
+    outfile: path.join(gameDir, "staff", "staff.js"),
+    bundle: true,
+    platform: "browser",
+    target: "es2022",
+    format: "esm",
+    legalComments: "none",
+    logLevel: "info",
+    sourcemap: devMode,
+    minify: !devMode,
+  };
+}
+
+async function copyStaffPage() {
+  await mkdir(path.join(gameDir, "staff"), { recursive: true });
+  await cp(path.join(root, "src/staff/index.html"), path.join(gameDir, "staff", "index.html"));
+}
+
 async function buildStandalone() {
   await copyStatic(gameDir);
+  await copyStaffPage();
 
   const options = {
     ...shared,
@@ -201,10 +230,12 @@ async function buildStandalone() {
   };
 
   if (!devMode) {
-    await esbuild.build(options);
+    await Promise.all([esbuild.build(options), esbuild.build(staffOptions())]);
     return null;
   }
 
+  const staffCtx = await esbuild.context(staffOptions());
+  await staffCtx.watch();
   const ctx = await esbuild.context(options);
   await ctx.watch();
   return ctx;
@@ -250,7 +281,7 @@ if (serve) {
   console.log("\n  watching for changes...\n");
 } else {
   console.log("");
-  if (makeGame) console.log("  game:       dist/game/");
+  if (makeGame) console.log("  game:       dist/game/  (staff page: dist/game/staff/)");
   if (makeExtension) console.log("  extension:  dist/extension/  (chrome://extensions -> Load unpacked)");
   console.log("");
 }

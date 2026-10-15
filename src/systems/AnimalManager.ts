@@ -1,38 +1,34 @@
-import type { GameConfig } from "../config";
-import { animalTypes, type AnimalType } from "../data/animals";
-import { Animal, type ScoreAward } from "../entities/Animal";
-import type { Damageable, ServerHooks } from "../entities/types";
-import type { ObjectManager } from "./ObjectManager";
+import type { AnimalKind } from "../data/animals";
+import { Animal } from "../entities/Animal";
 
+// 1.9.4: the kinds table the server sends with the setup packet, and the display animals spawned from it
 export class AnimalManager {
-  public readonly animalTypes: AnimalType[] = animalTypes;
+  public kinds: AnimalKind[] = [];
 
-  public constructor(
-    readonly animals: Animal[],
-    private readonly players: Damageable[],
-    private readonly objectManager: ObjectManager,
-    private readonly config: GameConfig,
-    private readonly awardScore: ScoreAward | null = null,
-    private readonly server: ServerHooks | null = null,
-  ) {}
+  public constructor(readonly animals: Animal[]) {}
 
-  public spawn(x: number, y: number, dir: number, typeIndex: number): Animal {
-    const type = this.animalTypes[typeIndex];
-    if (!type) {
-      console.error("missing animal type", typeIndex);
-      return this.spawn(x, y, dir, 0);
+  public setKinds(list: AnimalKind[] | null | undefined): void {
+    this.kinds = [];
+    for (const kind of list ?? []) {
+      if (kind && typeof kind.id === "number") this.kinds[kind.id] = kind;
     }
+  }
+
+  public kind(id: number): AnimalKind | null {
+    return this.kinds[id] ?? null;
+  }
+
+  public spawn(x: number, y: number, dir: number, index: number): Animal | null {
+    const kind = this.kind(index);
+    if (!kind) return null;
 
     let animal = this.animals.find((a) => !a.active);
     if (!animal) {
-      animal = new Animal(
-        this.animals.length, this.players, this.objectManager,
-        this.config, this.awardScore, this.server,
-      );
+      animal = new Animal(this.animals.length);
       this.animals.push(animal);
     }
 
-    animal.init(x, y, dir, typeIndex, type);
+    animal.init(x, y, dir, index, kind);
     return animal;
   }
 }

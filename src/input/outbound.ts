@@ -63,6 +63,7 @@ export function sendAttackState(): void {
   if (attack.held && !pressCounted) presses.push(Date.now());
   pressCounted = Boolean(attack.held);
   connection.send(ClientPacket.SendHit, attack.held, getAimAngle());
+  if (attack.held) lastSentAim = undefined;
 }
 
 let lastSentAim: number | undefined;
@@ -78,8 +79,8 @@ export function sendAimAngle(): void {
   connection.send(ClientPacket.SendAim, angle);
 }
 
-export function selectItem(index: number, isWeapon = false): void {
-  connection.send(ClientPacket.SelectToBuild, index, isWeapon);
+export function selectItem(index: number, isWeapon?: boolean): void {
+  connection.send(ClientPacket.SelectToBuild, index, isWeapon ? true : undefined);
 }
 
 const DOUBLE_TAP_MS = 400;
@@ -110,6 +111,7 @@ export function tapBarItem(index: number, isWeapon = false): void {
     if (wasHeld) selectItem(index);
     connection.send(ClientPacket.SendHit, 1, getAimAngle());
     connection.send(ClientPacket.SendHit, 0, null);
+    lastSentAim = undefined;
   }
 }
 
@@ -128,8 +130,12 @@ export function pingMinimap(): void {
   connection.send(ClientPacket.PingMap, 1);
 }
 
-export function clearHeldKeys(): void {
+export function forgetHeldKeys(): void {
   for (const key in heldKeys) delete heldKeys[Number(key)];
+}
+
+export function clearHeldKeys(): void {
+  forgetHeldKeys();
   lastSentMoveAngle = undefined;
   connection.send(ClientPacket.ResetMovementDir);
 }

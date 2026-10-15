@@ -47,12 +47,18 @@ export interface FriendRequest {
   user: string;
 }
 
+export interface FriendPresence {
+  server: string;
+  env: SiteEnv;
+  playing?: boolean;
+}
+
 export interface FriendsState {
   friends: string[];
   incoming: FriendRequest[];
   outgoing: FriendRequest[];
   names: Record<string, string | null>;
-  online: Record<string, { server: string; env: SiteEnv }>;
+  online: Record<string, FriendPresence>;
   loaded: boolean;
 }
 
@@ -61,6 +67,7 @@ export interface FriendInvite {
   name: string;
   server: string;
   env: SiteEnv;
+  as?: string;
 }
 
 export interface IncomingRequest {

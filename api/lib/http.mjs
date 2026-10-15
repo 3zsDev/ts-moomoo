@@ -80,3 +80,7 @@ export class RateLimiter {
 
 export const ok = (body = { ok: true }) => ({ status: 200, body });
 export const fail = (status, error) => ({ status, body: { error } });
+
+export function internalOnly(handler) {
+  return (ctx, request) => (isInternal(request.req) ? handler(ctx, request) : fail(403, "forbidden"));
+}

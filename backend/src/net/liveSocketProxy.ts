@@ -26,6 +26,7 @@ const SITE_ORIGINS: Record<string, string> = {
 
 const PROTOCOL_FILE = /^\/p\/([A-Za-z0-9_-]+\.js)$/;
 const IMPORT_MAP_ENTRY = /"moomoo-protocol"\s*:\s*"\/p\/([A-Za-z0-9_-]+\.js)"/;
+const BUNDLE_SCRIPT = /<script[^>]*\ssrc="[^"]*\/assets\/(index-[A-Za-z0-9_-]+)\.js"/;
 const MAX_CACHED_MODULES = 32;
 const FETCH_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36",
@@ -38,10 +39,11 @@ async function fetchText(url: string): Promise<string> {
   return response.text();
 }
 
-async function currentProtocolFile(origin: string): Promise<string> {
-  const file = IMPORT_MAP_ENTRY.exec(await fetchText(`${origin}/`))?.[1];
+async function currentProtocolFile(origin: string): Promise<{ file: string; bundle: string | null }> {
+  const page = await fetchText(`${origin}/`);
+  const file = IMPORT_MAP_ENTRY.exec(page)?.[1];
   if (!file) throw new Error("no protocol module in the live import map");
-  return file;
+  return { file, bundle: BUNDLE_SCRIPT.exec(page)?.[1] ?? null };
 }
 
 async function protocolModule(origin: string, file: string): Promise<string> {
@@ -74,7 +76,7 @@ export function serveLiveProtocol(request: IncomingMessage, response: ServerResp
   }
 
   const job = isLookup
-    ? currentProtocolFile(origin).then((name) => sendText(response, 200, "application/json", JSON.stringify({ file: name })))
+    ? currentProtocolFile(origin).then((live) => sendText(response, 200, "application/json", JSON.stringify(live)))
     : protocolModule(origin, file!).then((source) => sendText(response, 200, "text/javascript; charset=utf-8", source));
   job.catch((error: Error) => {
     console.warn(`[live] can't pull the protocol from ${origin}/p/: ${error.message}`);

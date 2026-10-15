@@ -89,9 +89,9 @@ export const animalTypes: AnimalType[] = [
     viewRange: 700, chargePlayer: true, drop: ["food", 150],
   },
   {
-    id: 10, name: "Yeti", src: "yeti_1", hostile: true, dmg: 25, killScore: 4500,
-    health: 3200, weightM: 0.35, speed: 0.0008, turnSpeed: 0.0008, scale: 95,
-    viewRange: 750, leapForce: 0.6, chargePlayer: true, drop: ["food", 800],
+    id: 10, name: "Yeti", src: "yeti_1", hostile: true, spawnDelay: 300000, dmg: 27.5,
+    killScore: 3600, health: 4160, weightM: 0.35, speed: 0.0008, turnSpeed: 0.0008, scale: 95,
+    viewRange: 750, leapForce: 0.6, chargePlayer: true, drop: ["food", 640],
   },
   {
     // weightM 0 keeps the boss in place: knockback reads `weightM ?? 1`, not `|| 1`

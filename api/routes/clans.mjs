@@ -3,6 +3,7 @@ import { fail, ok, RateLimiter } from "../lib/http.mjs";
 import { liveGet } from "../lib/mirror.mjs";
 import { read } from "../lib/periods.mjs";
 import { prefsOf, signedIn, viaLive } from "./accounts.mjs";
+import { clanNote } from "./social.mjs";
 
 const CLAN_NAME = /^[A-Za-z0-9]{3,4}$/;
 const MAX_MEMBERS = 80;
@@ -78,6 +79,12 @@ function depart(store, clan, id, kicked) {
   if (user) user.clan = null;
 }
 
+function invitedTo(store, clan) {
+  return Object.values(store.users)
+    .filter((user) => user.name && user.invites.some((invite) => invite.clan === clan.key))
+    .map((user) => user.name);
+}
+
 function remove(store, clan) {
   for (const id of Object.keys(clan.members)) depart(store, clan, id, false);
   delete store.clans[clan.key];
@@ -126,7 +133,10 @@ export const clanRoutes = {
 
     const role = clan.members[user.id]?.role ?? "member";
     const response = { clan: clanView(ctx.store, clan, true), role, invites };
-    if (RANK[role] >= RANK.officer) response.requests = clan.requests.map((id) => nameOf(ctx.store, id));
+    if (RANK[role] >= RANK.officer) {
+      response.requests = clan.requests.map((id) => nameOf(ctx.store, id));
+      response.invited = invitedTo(ctx.store, clan);
+    }
     return ok(response);
   },
 
@@ -159,8 +169,10 @@ export const clanRoutes = {
     if (!target) return fail(404, "not found");
     if (target.closed) return fail(403, "closed");
     if (Object.keys(target.members).length >= MAX_MEMBERS) return fail(409, "full");
+    if (target.requests.includes(user.id)) return fail(409, "asked");
+    if (user.invites.some((invite) => invite.clan === target.key)) return fail(409, "invited");
 
-    if (!target.requests.includes(user.id)) target.requests.push(user.id);
+    target.requests.push(user.id);
     return done(ctx);
   },
 
@@ -186,6 +198,7 @@ export const clanRoutes = {
       if (clan) return fail(409, "in a clan");
       if (Object.keys(target.members).length >= MAX_MEMBERS) return fail(409, "full");
       join(ctx.store, target, user);
+      clanNote(ctx, target.name, `${user.name} joined the clan`);
     }
     return done(ctx);
   },
@@ -203,6 +216,7 @@ export const clanRoutes = {
       if (applicant.clan) return fail(409, "in a clan");
       if (Object.keys(clan.members).length >= MAX_MEMBERS) return fail(409, "full");
       join(ctx.store, clan, applicant);
+      clanNote(ctx, clan.name, `${applicant.name} joined the clan`);
     }
     return done(ctx);
   },
@@ -233,6 +247,7 @@ export const clanRoutes = {
     if (RANK[member.role] >= rank) return fail(403, "rank");
 
     depart(ctx.store, clan, target.id, true);
+    clanNote(ctx, clan.name, `${target.name} was removed from the clan`);
     return done(ctx);
   },
 
@@ -246,10 +261,21 @@ export const clanRoutes = {
     if (target.clan) return fail(409, "in a clan");
     if (!prefsOf(target).clanInvites) return fail(403, "no invites");
     if (Object.keys(clan.members).length >= MAX_MEMBERS) return fail(409, "full");
+    if (target.invites.some((invite) => invite.clan === clan.key)) return fail(409, "invited");
+    if (clan.requests.includes(target.id)) return fail(409, "asked");
 
-    if (!target.invites.some((invite) => invite.clan === clan.key)) {
-      target.invites.push({ clan: clan.key, by: user.name, at: Date.now() });
-    }
+    target.invites.push({ clan: clan.key, by: user.name, at: Date.now() });
+    return done(ctx);
+  },
+
+  "POST /clan/uninvite": async (ctx, { body }) => {
+    const { clan, rank, error } = await actor(ctx, body);
+    if (error) return error;
+    if (!clan || rank < RANK.officer) return fail(403, "rank");
+
+    const target = ctx.store.userByName(body.name);
+    if (!target || !target.invites.some((invite) => invite.clan === clan.key)) return fail(404, "no player");
+    target.invites = target.invites.filter((invite) => invite.clan !== clan.key);
     return done(ctx);
   },
 
@@ -266,6 +292,7 @@ export const clanRoutes = {
     if (rank >= RANK.owner) return fail(409, "owner");
 
     depart(ctx.store, clan, user.id, false);
+    clanNote(ctx, clan.name, `${user.name} left the clan`);
     return done(ctx);
   },
 
@@ -279,10 +306,9 @@ export const clanRoutes = {
   },
 };
 
-// a real MooMoo account's clan is its live clan: seeing and managing it goes to live
 for (const path of [
   "/clan/mine", "/clan/create", "/clan/request", "/clan/requests", "/clan/answer", "/clan/decide",
-  "/clan/role", "/clan/kick", "/clan/invite", "/clan/leave", "/clan/disband",
+  "/clan/role", "/clan/kick", "/clan/invite", "/clan/uninvite", "/clan/leave", "/clan/disband",
 ]) {
   clanRoutes[`POST ${path}`] = viaLive(path, clanRoutes[`POST ${path}`]);
 }

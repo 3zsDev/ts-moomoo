@@ -190,6 +190,7 @@ the API all read them.
 | `API_MIRROR` | `https://api-prod2.moomoo.io` | The real MooMoo API that signed-in accounts are mirrored from (name, role, clan, prefs, stats), and that profiles, clans and friend names not found locally are looked up on. `off` turns it off |
 | `API_JWKS_URL` | — | JWKS for checking account token signatures. Without it tokens are only decoded, which is fine locally but **must be set on a public server** |
 | `TURNSTILE_SECRET` | — | Cloudflare Turnstile secret. Without it captcha tokens aren't checked |
+| `API_BUNDLE` | — | Name of the client bundle that's live (e.g. `index-5a0cba0c`). Open pages whose own hashed bundle differs show the update notice. Our `bundle.js` isn't hashed, so leave it unset locally |
 | `INTERNAL_KEY` | — | Shared secret between the API and game servers. Without it, only calls from the same machine are trusted |
 | `KICK_LOCK_SECONDS` | `300` | How long a player kicked by a mod can't rejoin ("You were removed from the game - try again in ..."). `0` turns it off |
 | `VPN_CHECK_URL` | — | Optional proxy/VPN lookup for guests, e.g. `https://proxycheck.io/v2/{ip}?vpn=1`. Guests it flags are refused; signed-in players never are |
@@ -299,110 +300,175 @@ a link to it. Rebound keys are saved in `localStorage.moo_keybinds` (Settings ->
 
 ---
 
-## What changed from 1.9.1 to 1.9.2
+## What changed from 1.9.2 to 1.9.3
 
-Live updated 1.9.2 in place, without a version bump: a later build (`index-12d386a8.js`, protocol module `s16nz1`)
-added the look editor, the new admin panel and a few rendering tweaks. Those are folded in below.
+Ported from the live 1.9.3 build (`index-5a0cba0c.js`, protocol modules `s16o49` on moomoo.io and `s16o48` on the
+sandbox). Live images were only re-encoded, so `public/img` is unchanged.
 
-### Gameplay & controls
+### Gameplay
 
-- **Rebalanced**
-  - Crab Shell: reflects 37.5% of damage (was 30%), takes 0.8x damage (was 0.85x), 0.93x speed (was 0.92x).
-  - Emerald weapons now also poison, and need 30000 weapon XP (was 20000).
-- **Show CPS** (Settings): attack presses in the last second, next to ping and FPS.
-- **Keys**
-  - With the Game Menu bound to a key, Esc no longer opens it as well (Esc still closes things).
-  - In a tribe, your keys keep working while the Tribes window is open.
-  - Holding attack on a key and the mouse together: letting go of one keeps attacking until the other is released.
-  - Attack packets (`F`) always carry the aim angle now, also when swinging a weapon.
-- **Mobile**
-  - The shop stays open while you move or attack (the Tribes window still closes).
-  - **Aim Follows Movement** (Settings, touch devices only, on by default): turn it off to keep facing where you
-    last aimed while walking.
+- **Yeti rebalanced:** 27.5 damage (was 25), 4160 health (was 3200), 3600 kill score (was 4500), drops 640 food
+  (was 800), and comes back 5 minutes after it dies (`spawnDelay`). The local 60s Yeti respawn override is gone.
+- Non-boss divers fade in faster when they surface (550ms, from 35%); bosses are unchanged.
+- The Falls pool check uses the full pool radius (was 90%).
+- **Touch:** a joystick can no longer get stuck held. It's let go when the window loses focus, the tab is hidden,
+  or no finger is left in its zone. Errors in a joystick handler no longer break the controls.
+- Pressing **/** in game opens chat with `/` typed.
 
-### Menu & UI
+### Messages, friends and clans
 
-- **Settings popups.** Social, Shop and Keys moved out of the Settings page into their own popup (Esc closes it).
-  Social has the account preferences and a *My profile* link, and says why they're missing when signed out or on
-  sandbox.
-- **Customizable shop** (Settings → Shop). Drag items into your order (mouse anywhere on the row, touch by the
-  grip), hide items with the eye, Show all / Hide all / Reset, and a **Combined Shop** that shows hats and
-  accessories in one list. Kept in `moo_shop`. With one kind all hidden, the shop shows the other without tabs; an
-  empty shop says where to change it.
-- **Shop clicks.** Equip / Unequip happen on mouse down, and pressing anywhere on an owned item wears it.
-- **Anonymous mode** (Settings → Social, signed-in players). Other players see `Anon#<sid>` for your name and no
-  clan, on the map and the leaderboard. *Show my own name to me* (on by default) keeps your own name on your screen.
-  It can be changed once every 31 seconds while playing; a note counts down.
-- **Profiles**
-  - Treasure chests no longer count as animals.
-  - Opened in game, a profile comes from the game server (`p`), so an anonymous player's profile opens too, without
-    clan invite, copy link or staff tools.
-- **Edit look** (Settings → Social, or *Edit look* on your own profile; signed-in players). Pick the hat, accessory,
-  weapon and variant, and skin colour you're drawn with on your profile page and share card, from what the account
-  has earned, with a live preview. Saved through `/account/look`.
-- **Admin panel.** Restyled, with dropdowns instead of rows of buttons, in sections (Powers, Travel, World, Give).
-  Moderators can open it too, but only get *No collision*. New: *No collision* (walk through objects and players),
-  give resources in amounts from 100 to 1,000,000, pick a mob to spawn; *Godlike* is gone (God + Aura does the same).
-- **Your clan's tribe.** If it's gone, the Tribes window offers to create it again; naming a tribe after your own clan
-  no longer asks the API.
-- **Look.** New `main.css` from the live 1.9.2 dump (shop editor, settings popup, CPS; smaller clan tag on the top
-  board). The live site now serves its sprites as WebP; ours stay PNG (same pictures).
+- **Live page stream.** The page keeps a connection to the API (`/page/stream`, signed in with a short-lived
+  `/page/ticket`). It carries friend and clan presence, messages, invites, live player counts for the server list,
+  "Crab King has fallen" / "clan took the top" notes from other servers, page notices and update notices.
+- **Whispers.** Friends have a **Message** button that opens a whisper card with the conversation so far. In game:
+  `/w <friend> <message>`, `/r <message>` to answer the last whisper, `/c <message>` for clan chat. Chat allows 240
+  characters for a `/` command (30 otherwise).
+- **Clan chat** in the clan card, plus an **In a game now** list of clanmates with Join and Invite.
+- **In-game message toasts** (top of the screen, with a reply button). They can be turned off separately for friends
+  and for the clan (Settings → Social → *Show Friend/Clan Messages In Game*). Unread messages light up the Friends and
+  Clan dots.
+- **Friends** show "in a game" from our own servers as well as FRVR presence. In a game, **Invite** goes through the
+  API (once per 30s per friend), and incoming invites can be joined from the banner.
+- **Clan card** for officers and owners has **Clan / Members / Manage** tabs. Manage lists join requests (or says
+  nobody's asking), invites still waiting (with **Cancel**), and the invite box. Past members are no longer listed.
+  Inviting someone twice, or someone who already asked to join, says so.
+- **Profiles** show "In game now on <server>" with a **Join** button.
+- **Top boards** gain a **Right now** tab (live scores in games now, from `/top-now`), refresh while you watch, and
+  cache for 4 seconds instead of a minute.
 
-### Rendering
+### Page & updates
 
-- **WebGL renderer.** The game is now drawn the way the live client does it: a port of its WebGL renderer
-  (`src/render/webgl/`) packs sprites, shapes and text into texture atlas pages and draws them in batches. It's the
-  default; the 2D canvas renderer (`src/render/canvas/`) is still there, chosen with `renderer` in
-  `src/config/render.ts`. Both draw through the same `Painter` interface (`src/render/painter.ts`), so the game's
-  drawing code is shared. See *Rendering* above.
-- **WebGL turned off.** The live game stops with "MooMoo needs WebGL, which this browser has turned off." We show an
-  alert saying so and carry on with the 2D canvas; `disableFallback: true` in `src/config/render.ts` gives the live
-  game's error instead.
-- **Moved files.** `src/render/canvas.ts` is now `src/render/surface.ts`, `src/render/shapes/` is now
-  `src/render/canvas/shapes/`, and `src/render/context.ts` became the canvas renderer.
-- **Resized players** (the admin Size power) are drawn scaled on the client too, not just bigger to the server.
-- WebGL circles are drawn at the current scale, so a resized player's body and hands stay sharp.
-- New sprite `weapons/bow_1_d.png` (diamond hunting bow).
-- On localhost, `?renderer=canvas` / `?renderer=webgl` switches renderer for a quick comparison.
+- **Update notice.** When a newer build is live, a bar offers a reload. It never interrupts a game, and a hidden tab
+  reloads by itself (at most once every 5 minutes). Our own build is `bundle.js`, which has no version hash, so this
+  stays off unless the API is told a bundle name (`API_BUNDLE`, or `POST /internal/bundle`).
+- **Page notices** (`POST /internal/notice {text, minutes}`) show a banner on every open page.
+- **"Game updated"** from a server (new packet `r`): a reload countdown, or "it reloads after this life".
+  "Game updated - please reload" now reloads automatically when allowed.
+- **Restarts.** A restart more than a minute away shows "Server restarting in N minutes" for 15 seconds instead
+  of a running countdown. Servers that are restarting carry `restartAt` and drop out of the server list unless
+  nothing else is left. A guest who loses a game to a restart can rejoin without the captcha for 5 minutes.
+- **Join errors:** `captcha` (a new captcha is shown), `hosting` (server networks can't join as a guest) and
+  `banned` (with the date it ends).
+- Server list version `1.31`.
 
-### Accounts & networking
+### Staff
 
-- **Packets.** The code lists grew, which changes the shuffled cipher tables:
-  - Client → server `I 1|0`: anonymous mode on / off (sent on join as `M { ..., anon: 1 }` too).
-  - Server → client `p sid json`: the profile behind a sid, answering `V`.
-- **Protocol fallbacks.** Both sites now serve a build named `s16nz1` (was `s16nys`), each with its own salt and
-  `mixKey`; the built-in values are updated for both (only used if the game's own module can't be loaded).
-- **FRVR sign-in.** Our port of the FRVR SDK now matches live's auth calls. Password login, sign-up, email codes and
-  token refresh all failed before (wrong success codes, missing `loginToFRVR`, refreshing on every token read). This
-  also works on a local server: sign in with your FRVR account and the local API takes the token.
-- Server list version `1.30`.
-- **Local accounts are your MooMoo account.** The local API mirrors the signed-in account from the live API (name,
-  role, clan, prefs, stats, look), and looks up profiles, clans and friend names it doesn't have on live. That also
-  brings the Friends tab back locally, which needs a name. Profiles call the look `gear`, like live.
+- Moderators get the admin button too, with a smaller panel: **No collision** and a **Live** feed. Admins keep the
+  full panel, which now also ends with the Live feed.
+- **Live feed:** reports (with reason and number of reporters) and anti-cheat flags as they happen, with **View**
+  (profile, or a guest record) and **Go** (join their server).
+- **Messages** in the staff panel: what a player has said in games, clan chat and whispers (`/mod/messages`),
+  marking shadowed lines.
 
-### Backend & tooling
+### Networking & security
+
+- **Protocol fallbacks:** moomoo.io and the sandbox now serve different builds (`s16o49` and `s16o48`), each with
+  its own salt and `mixKey`. The built-in values are updated for both and checked against the live wasm.
+- **Cipher tables:** pinned tables shuffle only the first 39 server codes (22 client codes). Newer codes (`q`, `r`)
+  get hashed slots after them.
+- **Telemetry** (`T`) is no longer sent on a timer. The server sends a challenge `q [seed, probes]`, and the client
+  answers `T [flags, untrustedEvents, probeMask, seal, seed]`. Probes only run when `protection.telemetry` is on
+  (`src/security/options.ts`); otherwise the mask is null.
+- **Seal.** Live now proves which client bundle is running: a SHA-256 of its own bundle, mixed with the
+  `moomoo-seal` name from the import map. Depending on the server it's reported in `T`, or mixed into the packet
+  key. This port computes the seal honestly over its own bundle and does not imitate the official one. Live
+  shards that only report the seal still accept it; any that mix it into the key will refuse this client.
+- The connect URL carries `&u=<bundle>` next to `b=`.
+
+### Backend & API
 
 - **Game server**
-  - Anonymous mode: `Anon#<sid>` and no clan in other players' player data and in the leaderboard; `I` re-sends you
-    to everyone, at most once every 30 seconds; it's cleared when you leave.
-  - Answers `V` with `p`: the API profile, or `{ name: "Anon#<sid>", anon: true }` for an anonymous player.
-  - **World generation** uses the original totals for stone and gold (32 and 7 for the whole map); it had been
-    making seven times as many. Trees and bushes stay at the original 9 and 3 per area, and cacti are always the
-    largest bush size.
-  - **No collision** power (`A noclip 1|0`); moderators may use only that one, admins everything.
-  - Each finished life reports what the player owned (hats, accessories, each weapon's best variant) and how they
-    looked, for the look editor.
-  - **Bot swarms.** At most `GAME_MAX_PER_IP` open sockets (4) and `GAME_JOINS_PER_MINUTE` new ones (12) per
-    address; localhost is exempt.
+  - The heartbeat sends who's playing (`players: [{account, name, score, anon, shadow}]`) and `restartAt`.
+    When a shutdown starts it beats right away and keeps beating through the countdown.
+  - Reports each chat line, Crab King kills and clan-top changes to the API.
+  - Proxies the new API routes, and streams `/page/stream` through.
 - **API**
-  - `POST /account/look` returns the account's earned options, its best life's look and the saved pick; with
-    `look` it saves it (400 if it isn't earned). Profiles include it as `gear`, like live. For a real MooMoo
-    account it goes to live instead (see *The local account API*).
+  - New:
+    - `/page/ticket`, `/page/stream`, `/page/friends`
+    - `/invite`
+    - `/chat/clan`, `/chat/whisper`, `/chat/history`
+    - `/clan/online`, `/clan/uninvite`
+    - `/mod/messages`, `/top-now`
+    - `/internal/chat`, `/internal/event`, `/internal/flags`, `/internal/notice`, `/internal/bundle`
+  - Account prefs gain `clanChat` and `whispers`.
+  - Mod verdicts can expire (`until`).
+  - Chat, presence and invites are local only: they aren't relayed to live, even for a mirrored account.
+    Clans and prefs still go to live as before.
+
+### Parity fixes (full audit against live 1.9.3)
+
+The whole live 1.9.3 client (game code, network prelude, page, CSS, texture pack, assets) was compared with the port
+function by function. Everything below was found missing or different and now matches live.
+
+- **Gameplay & sim**
+  - Projectiles that destroy a structure lower its owner's item count.
+  - A projectile layer of 0 falls back to the type's layer (turret shots).
+  - Sandbox still needs the ammo resources to shoot (it just doesn't take them).
+  - `randFloat` keeps live's `+1` range, which also sets natural sprite rotation.
+  - The wiggle packet `L` rounds its direction to 1 decimal.
+  - Config `animalCount` is 8.
+  - The name filter has bad-words v3's `qweir`.
+- **Input**
+  - Any mouse button attacks.
+  - Held keys are forgotten when a game starts, and when the game menu or admin panel is toggled.
+  - Selecting an item sends nil, not `false`, for the weapon flag.
+  - Projectiles are ignored while the window is unfocused.
+  - Touching any hooked button switches to touch mode.
+  - Mobile detection includes live's UA-prefix test.
+- **Joining**
+  - The follow bonus applies straight away, and your own player only starts with resources when you have it.
+  - A captcha token is used once per connect attempt.
+  - The full-server check also runs on retries.
+  - The menu shows the real "no servers" reason.
+  - The leave-page prompt and `levelStart` fire when joining, not on spawn.
+- **Rendering**
+  - Name tags are one label with a shared outline.
+  - Damage numbers, the boss name and chat-bubble measuring use the high-DPI text layer.
+  - Only trees get round outline joins.
+  - Animal sprites warm up while idle, and the crown and skull icons load with the menu.
+  - Leaving a game keeps the last world on the menu without the river.
+- **Menus & cards**
+  - Ping/FPS/CPS show from the join request on.
+  - The OneTrust button hides while playing.
+  - Ads refresh on death.
+  - Escape follows the in-game flag.
+  - The Friends tab shows without a claimed name.
+  - The sign-in button always shows to signed-out players.
+  - Profile live stats unsubscribe (`V -1`) and reset on leave; a dropped connection leaves an open profile up.
+  - Clan network errors say so.
+  - Deep links work if the page already loaded.
+  - The anonymous-mode packet (`I`) needs a pinned connection.
+- **Trusted input**: hover handlers, the account card, and the profile and clan cards go through `trusted()`. With
+  `trustedInputOnly` on, calls without a real event are dropped, as live does.
+- **Network**
+  - Live's socket close messages are used (4003 is "Sign in to play on this server").
+  - msgpack matches the library live bundles: int64, any ArrayBuffer view as bin, the timestamp ext, ext formats, and errors for trailing bytes and bad map keys.
+- **Page**
+  - The FRVR bootstrap: cookiepro consent key per host, `init("prod")`, the tracker channel per host, and adsbygoogle provider config. The port's ads switch stays off.
+  - `manifest.json` and `docs/versions.txt` added.
+  - The robots and og:image tags and the protocol import map follow prod or sandbox.
+  - Dead `.min.js` and `assets/` tags removed.
+  - The texture-pack list matches live's 194 entries.
+- **Globals**: `showPreAd`, `requestAnimFrame`, `openLink`, `aJoinReq`, `kickFromClan`, `sendJoin`,
+  `leaveAlliance`, `createAlliance`, `storeBuy`, `storeEquip`, `showItemInfo`, `Math.lerpAngle`, live's `roundRect` and
+  `loadedScript`.
+- **Dev tools**
+  - On localhost, `?atlas=<pageSize>x<maxPages>` sets the WebGL atlas size.
+  - `__painter.pageOf()` and `__painter.dumpAtlas()` added.
+- **Sound manager** (`src/audio/sounds.ts`): live's Howler wrapper. Live never plays anything, but it stops `menu` on join.
+
+Deliberately left different:
+- Live bugs: menu-background bushes that never draw, and controls staying live after death.
+- Self-hosting: share links use your own host, and other query flags survive the server hash.
+- Emoji are drawn whole, not split into halves.
+- Emerald stays members-only.
+- The nipplejs 1.0.4 adapter stays.
 
 ### Known gaps
 
+- **Seal mode 2** (seal mixed into the packet key) on a live shard will refuse this client; see *Seal* above.
 - **Emerald** unlocks at 30000 weapon XP for signed-in players only. The admin weapon command can also hand it to guests until they switch weapons.
-- **Bot-swarm protection** on live is server-side and not visible in the client; ours is the per-address limits above.
+- **Bot-swarm protection** on live is server-side and not visible in the client; ours is the per-address limits.
 
 ---
 

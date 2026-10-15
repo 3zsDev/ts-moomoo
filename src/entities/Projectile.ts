@@ -1,7 +1,7 @@
 import { accessoryEffect, type GameConfig } from "../config";
 import type { ItemData } from "../data/items";
 import type { ObjectManager } from "../systems/ObjectManager";
-import type { GameObject } from "./GameObject";
+import type { GameObject, GameObjectOwner } from "./GameObject";
 import type { Damageable, ServerHooks } from "./types";
 import { getAngleDist } from "../utils/angles";
 import { getDistance, lineInRect } from "../utils/geometry";
@@ -167,6 +167,9 @@ export class Projectile {
           } else {
             server.send(player.sid, "Q", obj.sid);
           }
+        }
+        if (!obj.active && obj.owner === (player as unknown as GameObjectOwner) && obj.group) {
+          (player as unknown as GameObjectOwner).changeItemCount?.(obj.group.id, -1);
         }
       }
     }

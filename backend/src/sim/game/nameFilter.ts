@@ -11,7 +11,9 @@ const LIVE_WORDS = [
   "senpa.io", "sidney", "sid", "senpaio", "vries", "asa",
 ];
 
-const blocked = [...new Filter().list, ...LIVE_WORDS];
+const BAD_WORDS_V3_ONLY = ["qweir"];
+
+const blocked = [...new Filter().list, ...BAD_WORDS_V3_ONLY, ...LIVE_WORDS];
 
 export function liveNameBlocked(name: string): boolean {
   const flat = name.toLowerCase().replace(/\s/g, "").replace(/1/g, "i").replace(/0/g, "o").replace(/5/g, "s");

@@ -3,10 +3,11 @@ import { protocol, type ProtocolSource } from "../../config/protocol";
 import { isSandbox } from "../../environment";
 
 const SANDBOX_BUILD = isSandbox();
-const BUILD = SANDBOX_BUILD ? { id: "s16nz1", salt: 1908827726 } : { id: "s16nz1", salt: 2643987008 };
+const BUILD = SANDBOX_BUILD ? { id: "s16o48", salt: 586296834 } : { id: "s16o49", salt: 509036625 };
 
 export let BUILD_ID = BUILD.id;
 export let BUILD_SALT = BUILD.salt;
+export let LIVE_BUNDLE: string | null = null;
 
 const BUNDLED_PROTOCOL_PATH = "p/moomoo-protocol.js";
 
@@ -65,6 +66,7 @@ function useProtocol(loaded: ProtocolModule | null): void {
   BUILD_ID = loaded?.BUILD_ID ?? BUILD.id;
   BUILD_SALT = loaded?.BUILD_SALT ?? BUILD.salt;
   moduleMixKey = loaded?.mixKey ?? null;
+  LIVE_BUNDLE = null;
 }
 
 export async function loadProtocol(): Promise<void> {
@@ -80,7 +82,7 @@ export async function loadProtocol(): Promise<void> {
 export async function loadLiveProtocol(environment: string): Promise<boolean> {
   try {
     const response = await fetch(`/p/live.json?environment=${encodeURIComponent(environment)}`, { cache: "no-store" });
-    const { file } = (await response.json()) as { file?: unknown };
+    const { file, bundle } = (await response.json()) as { file?: unknown; bundle?: unknown };
     if (!response.ok || typeof file !== "string") throw new Error(`lookup answered ${response.status}`);
     const loaded = await importProtocol(
       new URL(`/p/${file}?environment=${encodeURIComponent(environment)}`, location.href).toString(),
@@ -88,6 +90,7 @@ export async function loadLiveProtocol(environment: string): Promise<boolean> {
     );
     if (!loaded) return false;
     useProtocol(loaded);
+    LIVE_BUNDLE = typeof bundle === "string" && bundle ? bundle : null;
     return true;
   } catch (error) {
     console.warn("[protocol] couldn't find the live protocol module", { environment, error });
@@ -102,18 +105,20 @@ function rotateLeft(value: number, shift: number): number {
 function mixProductionByte(salt: number, index: number): number {
   let value = Math.imul(index + 1, 0x9e3779b1) ^ salt;
 
-  value ^= value << 10;
-  value ^= value >>> 30;
-  value ^= 0xcc34b9fe;
-  value ^= value >>> 27;
-  value ^= value << 7;
+  value = (value + 0x1de8d981) | 0;
   value = rotateLeft(value, 11);
-  value = (value + 0x90a2ad19) | 0;
-  value = Math.imul(value, 0x3e28d5bf);
-  value = rotateLeft(value, 3);
-  value = (value + 0xbdfe6241) | 0;
-  value ^= 0x4dd28fb9;
-  value = (value + 0xc48ab3b2) | 0;
+  value ^= value >>> 12;
+  value = Math.imul(value, 0x806217ad);
+  value ^= 0xd551ba52;
+  value = Math.imul(value, 0x2a952c0b);
+  value ^= value << 3;
+  value = rotateLeft(value, 22);
+  value ^= value << 4;
+  value ^= value >>> 14;
+  value ^= value << 20;
+  value ^= value >>> 25;
+  value ^= 0x787b2bfd;
+  value = Math.imul(value, 0xe87993d);
 
   return (value >>> 11) & 0xff;
 }
@@ -121,15 +126,19 @@ function mixProductionByte(salt: number, index: number): number {
 function mixSandboxByte(salt: number, index: number): number {
   let value = Math.imul(index + 1, 0x9e3779b1) ^ salt;
 
-  value = (value + 0xbf73ef68) | 0;
-  value ^= value >>> 16;
-  value = rotateLeft(value, 19);
-  value ^= value >>> 19;
-  value = Math.imul(value, 0x4a9ae0ef);
-  value ^= value >>> 16;
-  value = Math.imul(value, 0xda6bbd9b);
-  value = rotateLeft(value, 10);
-  value ^= 0xec01eaec;
+  value ^= 0x9961ff4d;
+  value = (value + 0x1586f328) | 0;
+  value ^= value << 30;
+  value ^= value >>> 2;
+  value = (value + 0xa001611f) | 0;
+  value ^= value >>> 23;
+  value ^= value << 19;
+  value = Math.imul(value, 0xc58fb503);
+  value ^= value >>> 26;
+  value ^= value << 19;
+  value = Math.imul(value, 0x1ac645e9);
+  value ^= value >>> 11;
+  value = (value + 0xb0d46485) | 0;
 
   return (value >>> 11) & 0xff;
 }

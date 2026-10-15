@@ -1,12 +1,14 @@
 import { connectToServer, joinGame, serverBrowser } from "../../game/session";
 import { isDev, isSandbox, serverListUrl } from "../../environment";
-import { auth, isStaff, SIGN_IN_REQUIRED, withTimeout } from "../../net/api";
+import { auth, SIGN_IN_REQUIRED, withTimeout } from "../../net/api";
+import { CAPTCHA_NEEDED, clearGuestRejoin, guestRejoinAllowed } from "../../net/api/join";
 import { hasCaptchaToken, isCaptchaRequired } from "../../net/turnstile";
 import { createElement, hookTouchEvents } from "../../utils/dom";
 import { openAccountCard } from "../account/accountCard";
 import { unsavedStatsNote } from "../cards/profile";
 import { ui } from "../elements";
 import { isAlive, isConnected, leaveGame } from "../netBridge";
+import { autoReload, canAutoReload } from "../reload";
 import { checkName, refreshNameHint } from "./nameField";
 import { showMenuNotice, showMenuStatus } from "./screens";
 import { awaitVerification } from "./verifyDialog";
@@ -78,8 +80,20 @@ const DISCONNECT_NOTICES: Record<string, string> = {
 };
 
 export function handleDisconnect(reason: string, reachedServer = true): void {
+  if (reason === CAPTCHA_NEEDED) {
+    // the quick guest rejoin was refused: go round again, this time through the captcha
+    clearGuestRejoin();
+    showMenuNotice("");
+    startPlay();
+    return;
+  }
   if (reason === "Game updated - please reload") {
-    showMenuStatus(`${reason} `, true);
+    if (canAutoReload()) {
+      showMenuStatus("Game updated - reloading...");
+      setTimeout(autoReload, 1500);
+    } else {
+      showMenuStatus(`${reason} `, true);
+    }
     return;
   }
   if (reason.toLowerCase() === "server is full") {
@@ -106,12 +120,6 @@ function connect(): void {
 
 function continuePlay(): void {
   setBusy(false);
-
-  const server = serverBrowser.selected();
-  if (server && serverBrowser.isFull(server) && !isStaff()) {
-    handleFullServer();
-    return;
-  }
 
   showMenuStatus("Connecting...");
   if (isConnected() && !sameConnection()) leaveGame();
@@ -143,7 +151,7 @@ export function startPlay(): void {
 
   checkName().then(
     () => { // only guests get ass fucked by cloudflare
-      if (!sameConnection() && !auth.isVerified() && isCaptchaRequired() && !hasCaptchaToken()) {
+      if (!sameConnection() && !auth.isVerified() && isCaptchaRequired() && !hasCaptchaToken() && !guestRejoinAllowed()) {
         awaitVerification(continuePlay, () => setBusy(false));
         return;
       }

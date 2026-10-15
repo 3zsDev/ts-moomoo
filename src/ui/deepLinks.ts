@@ -58,9 +58,11 @@ export function openDeepLinks(): void {
   const clan = queryParam("clan");
   const discord = queryParam("discord");
 
-  window.addEventListener("load", () => {
+  const open = () => {
     if (discord && DISCORD_CODE.test(discord)) linkDiscord(discord);
     if (profile) openProfile(profile);
     else if (clan) openClanByName(clan);
-  });
+  };
+  if (document.readyState === "complete") open();
+  else window.addEventListener("load", open);
 }

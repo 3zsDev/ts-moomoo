@@ -21,7 +21,7 @@ export function fallsDistance(x: number, y: number): number {
 }
 // bossbar range
 export function inFallsPool(x: number, y: number): boolean {
-  return falls.pool.some(([px, py, radius]) => Math.hypot(x - px, y - py) <= radius * 0.9);
+  return falls.pool.some(([px, py, radius]) => Math.hypot(x - px, y - py) <= radius);
 }
 
 export function inFallsWater(x: number, y: number): boolean {

@@ -38,6 +38,8 @@ export const ServerPacket = {
   BossTelegraph: "W",
   PlayerStats: "F",
   PlayerProfile: "p",
+  SecurityChallenge: "q",
+  GameUpdated: "r",
 } as const;
 
 export type ServerPacketType = (typeof ServerPacket)[keyof typeof ServerPacket];
@@ -46,5 +48,5 @@ export type ServerPacketType = (typeof ServerPacket)[keyof typeof ServerPacket];
 export const SERVER_CODES = [
   "A", "B", "C", "D", "E", "a", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
   "Q", "R", "S", "T", "U", "V", "X", "Y", "Z", "g", "1", "2", "3", "4", "5", "6",
-  "7", "8", "9", "0", "W", "F", "p",
+  "7", "8", "9", "0", "W", "F", "p", "q", "r",
 ];

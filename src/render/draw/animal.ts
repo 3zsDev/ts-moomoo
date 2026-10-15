@@ -50,12 +50,13 @@ function renderDiver(painter: Painter, animal: Animal, image: LoadedImage, radiu
       painter.drawImage(image, -radius, -radius, radius * 2, radius * 2);
     }
   } else if (animal.state === 3) {
-    const progress = Math.min(1, elapsed / 1650);
+    const progress = Math.min(1, elapsed / (animal.isBoss ? 1650 : 550));
     const rise = Math.min(1, progress / 0.6);
     shadow(0.32 + 0.3 * rise, SUBMERGED_SCALE + (1 - SUBMERGED_SCALE) * rise);
     bubbles(12);
-    if (progress > 0.8) {
-      painter.globalAlpha = (progress - 0.8) / 0.2;
+    const showAt = animal.isBoss ? 0.8 : 0.35;
+    if (progress > showAt) {
+      painter.globalAlpha = (progress - showAt) / (1 - showAt);
       painter.drawImage(image, -radius, -radius, radius * 2, radius * 2);
     }
   } else {

@@ -71,6 +71,12 @@ export function getCaptchaToken(): string | null {
   return `cf:${token}`;
 }
 
+export function takeCaptchaToken(): string | null {
+  const captcha = getCaptchaToken();
+  resetTurnstile();
+  return captcha;
+}
+
 export function hasCaptchaToken(): boolean {
   return token !== null;
 }

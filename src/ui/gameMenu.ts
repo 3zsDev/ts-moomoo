@@ -1,5 +1,6 @@
 import { socialEnabled } from "../environment";
 import { players } from "../game/world";
+import { clearHeldKeys } from "../input";
 import { auth, friends, isStaff } from "../net/api";
 import { byId, createElement, removeAllChildren } from "../utils/dom";
 import { openMyClan } from "./cards/clan";
@@ -169,7 +170,9 @@ export function closeGameMenu(): void {
   returnFriendsBody();
 }
 
+// held keys are reset on every toggle, closing included
 export function toggleGameMenu(closeOthers: () => void, tab?: GameMenuTab): void {
+  clearHeldKeys();
   if (isGameMenuOpen() && (!tab || tab === activeTab)) {
     closeGameMenu();
     return;

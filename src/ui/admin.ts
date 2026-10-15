@@ -1,11 +1,17 @@
 import { config } from "../config";
 import { itemData } from "../data/items";
+import { serverBrowser } from "../game/session";
 import { state } from "../game/state";
+import { clearHeldKeys } from "../input";
 import { account, onAccountChange } from "../net/api";
 import { createElement, removeAllChildren } from "../utils/dom";
+import { openGuestRecord, openProfile } from "./cards/profile";
+import { timeAgo } from "./cards/staffPanel";
 import { ui } from "./elements";
+import { joinFriendServer, serverLabel } from "./friends/friendList";
 import { leaderboardPlayers } from "./hud/leaderboard";
-import { isAlive, mySid, sendAdminCommand } from "./netBridge";
+import { connectedServerKey } from "./menu/playButtons";
+import { isAlive, isConnected, mySid, sendAdminCommand } from "./netBridge";
 
 type Toggle = "god" | "aura" | "boss" | "invisible" | "noclip";
 type Multiplier = "size" | "power" | "speed" | "health";
@@ -34,6 +40,76 @@ const BOSSES: [number, string][] = [[8, "MOOFIE"], [6, "MOOSTAFA"], [11, "Crab K
 const VARIANT_NAMES = ["Normal", "Gold", "Diamond", "Ruby", "Emerald"];
 const RESOURCES = ["Wood", "Food", "Stone", "Gold"];
 const AMOUNTS: [number, string][] = [[100, "100"], [1000, "1,000"], [10000, "10,000"], [100000, "100,000"], [1000000, "1,000,000"]];
+
+export interface StaffFeedEntry {
+  kind: "report" | "flags" | string;
+  target: { id: string; name?: string };
+  by?: { name?: string };
+  reason?: string;
+  reporters?: number;
+  counts?: Record<string, number>;
+  server?: string;
+  at?: number;
+}
+
+const FEED_MAX = 100;
+const feed: StaffFeedEntry[] = [];
+let feedHolder: HTMLElement | null = null;
+
+export function addStaffFeedEntry(entry: StaffFeedEntry): void {
+  if (!entry?.target || !account.role) return;
+  feed.unshift(entry);
+  feed.length = Math.min(feed.length, FEED_MAX);
+  renderFeed();
+}
+
+function viewFeedTarget(target: StaffFeedEntry["target"]): void {
+  closeAdminMenu();
+  if (String(target.id).startsWith("u:") && target.name) {
+    openProfile(target.name);
+    return;
+  }
+  openGuestRecord(target.id, target.name || target.id);
+}
+
+function renderFeed(): void {
+  const holder = feedHolder;
+  if (!holder?.isConnected) return;
+  removeAllChildren(holder);
+  if (!feed.length) createElement({ class: "friendEmpty", text: "Nothing since this page opened", parent: holder });
+
+  for (const entry of feed) {
+    const key = serverBrowser.keyOf(entry.server ?? "");
+    const who = entry.target.name || (String(entry.target.id).startsWith("d:") ? "a guest" : "unnamed");
+    const what = entry.kind === "report"
+      ? `Reported by ${entry.by?.name || "unnamed"}${entry.reason ? ` for ${entry.reason}` : ""}` +
+        (entry.reporters && entry.reporters > 1 ? ` (${entry.reporters} reporters)` : "")
+      : Object.entries(entry.counts ?? {}).map(([signal, count]) => `${signal.replace(/_/g, " ")} ${count}`).join(", ");
+
+    const row = createElement({ class: "adminFeedRow" + (entry.kind === "report" ? " report" : ""), parent: holder });
+    const text = createElement({ class: "adminFeedText", parent: row });
+    createElement({ tag: "span", class: "adminFeedWho", text: who, parent: text });
+    createElement({ tag: "span", text: ` ${what}`, parent: text });
+    createElement({
+      class: "adminFeedNote",
+      parent: text,
+      text: `${key ? serverLabel(key) : entry.server || ""} · ${timeAgo(entry.at || Date.now())}`,
+    });
+    adminButton(row, "View", () => viewFeedTarget(entry.target));
+    if (key && !(isConnected() && key === connectedServerKey())) {
+      adminButton(row, "Go", () => {
+        closeAdminMenu();
+        joinFriendServer(key);
+      });
+    }
+  }
+}
+
+function liveSection(): void {
+  title("Live");
+  feedHolder = createElement({ class: "adminFeed", parent: ui.adminHolder });
+  renderFeed();
+}
 
 function isPanelRole(): boolean {
   return account.role === "admin" || account.role === "mod";
@@ -118,7 +194,10 @@ function render(): void {
     });
     if (panel[key]) button.classList.add("on");
   }
-  if (!admin) return;
+  if (!admin) {
+    liveSection();
+    return;
+  }
 
   const multiply = adminRow("Multiply");
   for (const [label, key, values] of MULTIPLIERS) {
@@ -193,6 +272,8 @@ function render(): void {
     else if (panel.pick[0] === "r") sendGive("give", id, panel.amount);
     else sendGive("item", id, 0);
   }).classList.add("go");
+
+  liveSection();
 }
 
 export function isAdminMenuOpen(): boolean {
@@ -204,6 +285,7 @@ export function closeAdminMenu(): void {
 }
 
 export function toggleAdminMenu(closeOthers: () => void): void {
+  clearHeldKeys();
   if (isAdminMenuOpen()) {
     closeAdminMenu();
     return;

@@ -1,3 +1,7 @@
+export class ExtData {
+  public constructor(public readonly type: number, public readonly data: Uint8Array) {}
+}
+
 export type MsgPackValue =
   | null
   | undefined
@@ -5,5 +9,8 @@ export type MsgPackValue =
   | number
   | string
   | Uint8Array
+  | ArrayBufferView
+  | Date
+  | ExtData
   | MsgPackValue[]
   | { [key: string]: MsgPackValue };

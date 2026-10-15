@@ -1,0 +1,39 @@
+MooMoo.io (ts-moomoo) - version history
+=======================================
+
+1.9.3
+-----
+- Yeti rebalanced: more damage and health, less score and food, and it comes back 5 minutes after it dies.
+- Divers fade in faster when they surface. The Falls pool check uses the full pool radius.
+- Touch joysticks can no longer get stuck held. Pressing / in game opens chat with / typed.
+- Whispers (/w, /r) and clan chat (/c), with message toasts in game and a live connection for friend and clan
+  presence, invites and messages.
+- Clan card Manage tab for officers, "In game now" on profiles, a "Right now" tab on the top boards.
+- Update notice and page notices; servers can announce "Game updated" with a reload countdown.
+- Staff: a Live feed of reports and anti-cheat flags, and player message history.
+- Protocol: moomoo.io and the sandbox serve different builds (s16o49 and s16o48); telemetry answers a server
+  challenge; the client proves which bundle is running.
+
+1.9.2
+-----
+- Crab Shell rebalanced; Emerald weapons also poison and need 30000 weapon XP.
+- Show CPS setting, key fixes, and the shop stays open while moving on mobile.
+- Settings popups (Social, Shop, Keys), a customizable shop order, anonymous mode, edit-look and profile changes.
+- Restyled admin panel; your clan's tribe can be created again from the Tribes window.
+- WebGL renderer, as the live client draws the game.
+- Packet code lists grew (new cipher tables); protocol build s16nz1; FRVR sign-in matches live.
+
+1.9.1
+-----
+- Keybinds grouped by item; typing in a text field no longer fires hotkeys; touch fixes.
+- New settings: Show Grid and Camera Lock. The skin colour is remembered.
+- Friends and clans on every site, account preferences, share links for profiles and clans, Discord linking.
+- Report reasons (Bot, Hack, Autoheal, Abuse) and clearer name errors.
+
+1.9.0
+-----
+- New hats, accessory effects, the Emerald weapon variant and new animals.
+- The Falls: a new area west of the map with a gorge, pools and a waterfall.
+- Rebuilt main menu (Play, How to, Settings, Friends, Clan, Top), new cards and a top leaderboard.
+- Captcha in a modal, an in-game menu, rebindable keys and mobile joysticks.
+- Accounts: join tickets, profiles, clans and friends.

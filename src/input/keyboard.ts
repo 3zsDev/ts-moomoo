@@ -2,6 +2,7 @@ import { itemData } from "../data/items";
 import { state } from "../game/state";
 import { trusted } from "../security/trusted";
 import { markCurrentPosition } from "../render/minimap";
+import { openChatWith } from "../ui/hud/chat";
 import { actionFor, movementKeys, type ItemKind, type MenuId } from "./keybinds";
 import {
   attack, clearHeldKeys, heldKeys, pingMinimap, selectItem, sendAttackState,
@@ -95,6 +96,12 @@ function handleKeyDown(event: KeyboardEvent, callbacks: InputCallbacks): void {
   const action = actionFor(code);
   if (action?.menu) {
     if (!event.repeat) callbacks.openMenu(action.menu);
+    return;
+  }
+
+  if (event.key === "/" && !action && !movementKeys()[code] && callbacks.canUseHotkeys()) {
+    event.preventDefault();
+    if (!event.repeat) openChatWith("/");
     return;
   }
 

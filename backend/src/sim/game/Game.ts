@@ -1,7 +1,9 @@
 import { censor, isRude, sanitize } from "../../../../api/lib/filter.mjs";
 import { liveNameBlocked } from "./nameFilter";
 import { serverConfig } from "../../config";
-import { fetchProfile, reportLife, reportPlayer, type LifeReport, type ReportTarget, type Session } from "../../net/api";
+import {
+  fetchProfile, reportChat, reportEvent, reportLife, reportPlayer, type LifeReport, type ReportTarget, type Session,
+} from "../../net/api";
 import type { SimClient } from "../client";
 import {
   accessories, Animal, AnimalManager, ClientPacket, config, findAccessory, findHat,
@@ -17,7 +19,6 @@ import { FallsDirector } from "./falls";
 import { findSpawnPoint, generateWorld } from "./worldgen";
 
 const deltaSpeed = 1000 / config.serverUpdateRate;
-const YETI = 10;
 const SPIN_MS = 16;
 const LEADERBOARD_INTERVAL = 1000;
 const ANON_COOLDOWN = 30000;
@@ -93,6 +94,8 @@ export class Game implements SimHost {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private nextTickAt = 0;
   private running = false;
+  private shutdownNoticeSent = false;
+  private topClan: string | null = null;
   private spin: ReturnType<typeof setImmediate> | null = null;
 
   public constructor() {
@@ -126,6 +129,19 @@ export class Game implements SimHost {
 
   public humanCount(): number {
     return this.clientsByPlayer.size;
+  }
+
+  public onlinePlayers(): { account: string | null; name: string; score: number; anon: boolean; shadow: boolean }[] {
+    return [...this.clientsByPlayer.keys()].map((player) => {
+      const session = this.sessions.get(player);
+      return {
+        account: session?.account?.id ?? null,
+        name: player.name,
+        score: Math.round(player.points),
+        anon: this.anonymous.has(player),
+        shadow: Boolean(session?.shadow),
+      };
+    });
   }
 
   public capacity(): number {
@@ -211,7 +227,6 @@ export class Game implements SimHost {
         const [x, y] = this.randomAnimalPoint(entry.band);
         const animal = this.animalManager.spawn(x, y, randInt(0, 628) / 100, entry.type);
         animal.spawnPoint = () => this.randomAnimalPoint(entry.band);
-        if (entry.type === YETI) animal.spawnDelay = serverConfig.yetiRespawn;
       }
     }
 
@@ -462,7 +477,10 @@ export class Game implements SimHost {
 
       case ClientPacket.RequestPlayerStats: {
         const target = this.players.find((other) => other.sid === Number(args[0]));
-        if (!target) return;
+        if (!target) {
+          this.statsTargets.delete(player);
+          return;
+        }
         this.statsTargets.set(player, target.sid);
         this.sendStats(player, target);
         void this.sendProfile(player, target);
@@ -642,7 +660,9 @@ export class Game implements SimHost {
   }
 
   public deliverChat(player: Player, message: string): void {
-    if (this.sessions.get(player)?.shadow) {
+    const shadow = Boolean(this.sessions.get(player)?.shadow);
+    if (this.clientsByPlayer.has(player)) reportChat({ ...this.reportTarget(player), text: message, shadow });
+    if (shadow) {
       this.hooks.send(player.id, ServerPacket.ReceiveChat, player.sid, message);
       return;
     }
@@ -708,7 +728,10 @@ export class Game implements SimHost {
   }
 
   public shutdownNotice(seconds: number): void {
-    this.hooks.broadcast(ServerPacket.ServerShutdownNotice, Math.max(0, Math.round(seconds)));
+    const left = Math.max(0, Math.round(seconds));
+    if (left > 60 && left % 60 !== 0 && this.shutdownNoticeSent) return;
+    this.shutdownNoticeSent = true;
+    this.hooks.broadcast(ServerPacket.ServerShutdownNotice, left);
   }
 
   public kickAll(reason: string): void {
@@ -1154,8 +1177,21 @@ export class Game implements SimHost {
       if (player.team) tribeTags.push(player.sid, player.team);
     }
     const crabKillers = ranked.filter((player) => this.falls.crabKillers.has(player.sid)).map((player) => player.sid);
+    this.noteTopClan(ranked[0]);
 
     this.hooks.broadcast(ServerPacket.UpdateLeaderboard, rows, roles, dead, crabKillers, clanTags, tribeTags);
+  }
+
+  private noteTopClan(top: Player | undefined): void {
+    const hidden = !top || this.anonymous.has(top) || this.sessions.get(top)?.shadow;
+    const clan = hidden ? null : top.clan ?? null;
+    if (clan && clan !== this.topClan) reportEvent({ kind: "clan_top", clan });
+    this.topClan = clan;
+  }
+
+  public onCrabKingKilled(player: Player): void {
+    const name = this.anonymous.has(player) ? `Anon#${player.sid}` : player.name;
+    if (!this.sessions.get(player)?.shadow) reportEvent({ kind: "boss", by: name });
   }
 
   private updateKillLeader(): void {

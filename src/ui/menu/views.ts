@@ -1,3 +1,4 @@
+import { state } from "../../game/state";
 import { auth } from "../../net/api";
 import { friends } from "../../net/api/social";
 import { hookTouchEvents } from "../../utils/dom";
@@ -5,7 +6,6 @@ import { openAccountCard } from "../account/accountCard";
 import { closeClanCard, isClanCardOpen, openMyClan } from "../cards/clan";
 import { closeProfile, isProfileOpen } from "../cards/profile";
 import { ui } from "../elements";
-import { isAlive } from "../netBridge";
 import { isVerifyDialogOpen } from "./verifyDialog";
 import { setPlayViewHandler } from "./screens";
 
@@ -61,7 +61,7 @@ export function bindMenuViews(): void {
   hookTouchEvents(ui.settingsButton);
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || isAlive() || isVerifyDialogOpen()) return;
+    if (event.key !== "Escape" || state.playing || isVerifyDialogOpen()) return;
     if (isClanCardOpen()) closeClanCard();
     else if (isProfileOpen()) closeProfile();
     else showView("play");

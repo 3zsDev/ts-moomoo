@@ -1,6 +1,9 @@
-import type { MsgPackValue } from "./types";
+import { encodeTimestamp, TIMESTAMP_TYPE } from "./timestamp";
+import { ExtData, type MsgPackValue } from "./types";
+import { utf8Count, utf8Write } from "./utf8";
 
 const BYTE_SCALE = [1, 0x100, 0x10000, 0x1000000, 0x100000000, 0x10000000000, 0x1000000000000, 0x100000000000000];
+const MAX_DEPTH = 100;
 
 class Writer {
   private bytes = new Uint8Array(1024);
@@ -35,10 +38,23 @@ class Writer {
     }
   }
 
+  public i64(value: number): void {
+    this.ensure(8);
+    this.view.setUint32(this.length, Math.floor(value / 0x100000000));
+    this.view.setUint32(this.length + 4, value);
+    this.length += 8;
+  }
+
   public f64(value: number): void {
     this.ensure(8);
     this.view.setFloat64(this.length, value, false);
     this.length += 8;
+  }
+
+  public utf8(value: string, byteLength: number): void {
+    this.ensure(byteLength);
+    utf8Write(value, this.bytes, this.length);
+    this.length += byteLength;
   }
 
   public finish(): Uint8Array {
@@ -46,9 +62,8 @@ class Writer {
   }
 }
 
-const textEncoder = new TextEncoder();
-
-function writeValue(writer: Writer, value: MsgPackValue): void {
+function writeValue(writer: Writer, value: MsgPackValue, depth: number): void {
+  if (depth > MAX_DEPTH) throw new Error(`Too deep objects in depth ${depth}`);
   if (value === null || value === undefined) {
     writer.u8(0xc0);
     return;
@@ -66,13 +81,16 @@ function writeValue(writer: Writer, value: MsgPackValue): void {
       return;
   }
 
-  if (value instanceof Uint8Array) writeBinary(writer, value);
-  else if (Array.isArray(value)) writeArray(writer, value);
-  else writeMap(writer, value as Record<string, MsgPackValue>);
+  if (value instanceof Date) writeExtension(writer, new ExtData(TIMESTAMP_TYPE, encodeTimestamp(value)));
+  else if (value instanceof ExtData) writeExtension(writer, value);
+  else if (Array.isArray(value)) writeArray(writer, value, depth);
+  else if (ArrayBuffer.isView(value)) writeBinary(writer, value);
+  else if (typeof value === "object") writeMap(writer, value as Record<string, MsgPackValue>, depth);
+  else throw new Error(`Unrecognized object: ${Object.prototype.toString.apply(value)}`);
 }
 
 function writeNumber(writer: Writer, value: number): void {
-  if (!Number.isInteger(value)) {
+  if (!Number.isSafeInteger(value)) {
     writer.u8(0xcb);
     writer.f64(value);
     return;
@@ -83,8 +101,7 @@ function writeNumber(writer: Writer, value: number): void {
     else if (value < 0x100) { writer.u8(0xcc); writer.big(value, 1); }
     else if (value < 0x10000) { writer.u8(0xcd); writer.big(value, 2); }
     else if (value < 0x100000000) { writer.u8(0xce); writer.big(value, 4); }
-    else if (value <= Number.MAX_SAFE_INTEGER) { writer.u8(0xcf); writer.big(value, 8); }
-    else { writer.u8(0xcb); writer.f64(value); }
+    else { writer.u8(0xcf); writer.big(value, 8); }
     return;
   }
 
@@ -92,38 +109,38 @@ function writeNumber(writer: Writer, value: number): void {
   else if (value >= -0x80) { writer.u8(0xd0); writer.big(value & 0xff, 1); }
   else if (value >= -0x8000) { writer.u8(0xd1); writer.big(value & 0xffff, 2); }
   else if (value >= -0x80000000) { writer.u8(0xd2); writer.big(value >>> 0, 4); }
-  else { writer.u8(0xcb); writer.f64(value); }
+  else { writer.u8(0xd3); writer.i64(value); }
 }
 
 function writeString(writer: Writer, value: string): void {
-  const bytes = textEncoder.encode(value);
-  const length = bytes.length;
+  const length = utf8Count(value);
 
   if (length < 0x20) writer.u8(0xa0 | length);
   else if (length < 0x100) { writer.u8(0xd9); writer.big(length, 1); }
   else if (length < 0x10000) { writer.u8(0xda); writer.big(length, 2); }
-  else { writer.u8(0xdb); writer.big(length, 4); }
+  else if (length < 0x100000000) { writer.u8(0xdb); writer.big(length, 4); }
+  else throw new Error(`Too long string: ${length} bytes in UTF-8`);
 
-  writer.raw(bytes);
+  writer.utf8(value, length);
 }
 
-function writeBinary(writer: Writer, value: Uint8Array): void {
-  const length = value.length;
+function writeBinary(writer: Writer, value: ArrayBufferView): void {
+  const length = value.byteLength;
   if (length < 0x100) { writer.u8(0xc4); writer.big(length, 1); }
   else if (length < 0x10000) { writer.u8(0xc5); writer.big(length, 2); }
   else { writer.u8(0xc6); writer.big(length, 4); }
-  writer.raw(value);
+  writer.raw(value instanceof Uint8Array ? value : new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
 }
 
-function writeArray(writer: Writer, value: MsgPackValue[]): void {
+function writeArray(writer: Writer, value: MsgPackValue[], depth: number): void {
   const length = value.length;
   if (length < 0x10) writer.u8(0x90 | length);
   else if (length < 0x10000) { writer.u8(0xdc); writer.big(length, 2); }
   else { writer.u8(0xdd); writer.big(length, 4); }
-  for (const entry of value) writeValue(writer, entry);
+  for (const entry of value) writeValue(writer, entry, depth + 1);
 }
 
-function writeMap(writer: Writer, value: Record<string, MsgPackValue>): void {
+function writeMap(writer: Writer, value: Record<string, MsgPackValue>, depth: number): void {
   const keys = Object.keys(value);
   const length = keys.length;
   if (length < 0x10) writer.u8(0x80 | length);
@@ -131,12 +148,26 @@ function writeMap(writer: Writer, value: Record<string, MsgPackValue>): void {
   else { writer.u8(0xdf); writer.big(length, 4); }
   for (const key of keys) {
     writeString(writer, key);
-    writeValue(writer, value[key]);
+    writeValue(writer, value[key], depth + 1);
   }
+}
+
+function writeExtension(writer: Writer, ext: ExtData): void {
+  const length = ext.data.length;
+  if (length === 1) writer.u8(0xd4);
+  else if (length === 2) writer.u8(0xd5);
+  else if (length === 4) writer.u8(0xd6);
+  else if (length === 8) writer.u8(0xd7);
+  else if (length === 16) writer.u8(0xd8);
+  else if (length < 0x100) { writer.u8(0xc7); writer.big(length, 1); }
+  else if (length < 0x10000) { writer.u8(0xc8); writer.big(length, 2); }
+  else { writer.u8(0xc9); writer.big(length, 4); }
+  writer.u8(ext.type & 0xff);
+  writer.raw(ext.data);
 }
 
 export function encode(value: MsgPackValue): Uint8Array {
   const writer = new Writer();
-  writeValue(writer, value);
+  writeValue(writer, value, 1);
   return writer.finish();
 }

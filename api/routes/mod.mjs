@@ -6,6 +6,8 @@ import { isStaff, signedIn } from "./accounts.mjs";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const LEVELS = new Set(["ban", "shadow", "clear"]);
 const POWER = { admin: 2, mod: 1 };
+const SAID_KEEP = 200;
+const SAID_KINDS = new Set(["game", "clan", "whisper"]);
 const KICK_LOCK_SECONDS = Number(process.env.KICK_LOCK_SECONDS ?? 300);
 const IP_SALT = process.env.IP_HASH_SALT ?? process.env.INTERNAL_KEY ?? "moomoo";
 
@@ -13,22 +15,60 @@ function hashIp(ip) {
   return createHash("sha256").update(`${IP_SALT}:${ip}`).digest("hex").slice(0, 12);
 }
 
+export function subjectById(store, id) {
+  if (typeof id !== "string" || !id) return null;
+  if (id.startsWith("g:") || id.startsWith("d:")) return store.guests[id.slice(2)] ?? null;
+  if (id.startsWith("u:")) return store.users[id.slice(2)] ?? null;
+  return store.users[id] ?? null;
+}
+
 export function subjectOf(store, body) {
-  if (typeof body.id === "string" && body.id) {
-    if (body.id.startsWith("g:")) return store.guests[body.id.slice(2)] ?? null;
-    return store.users[body.id] ?? null;
-  }
+  if (typeof body.id === "string" && body.id) return subjectById(store, body.id);
   return store.userByName(body.name);
+}
+
+export function feedId(subject) {
+  return subject.did ? `d:${subject.did}` : `u:${subject.id}`;
+}
+
+export function verdictOf(subject) {
+  const verdict = subject?.verdict;
+  if (verdict?.until && verdict.until <= Date.now()) {
+    subject.verdict = null;
+    return null;
+  }
+  return verdict ?? null;
+}
+
+export function ipBanOf(store, ip) {
+  const ban = ip ? store.ipBans[ip] : null;
+  if (ban?.until && ban.until <= Date.now()) {
+    delete store.ipBans[ip];
+    store.save();
+    return null;
+  }
+  return ban ?? null;
 }
 
 export function targetOf(subject) {
   return subject.did ? { did: subject.did } : { id: subject.id };
 }
 
+function flagsSince(log, since) {
+  let total = 0;
+  for (const entry of log) {
+    if (entry.at < since) continue;
+    for (const value of Object.values(entry.counts)) total += value;
+  }
+  return total;
+}
+
 export function modRecord(subject) {
   const now = Date.now();
   const sessionStart = subject.session?.at ?? Infinity;
   const reports = subject.reports ?? [];
+  const verdict = verdictOf(subject);
+  const signals = subject.flagTotals ?? {};
 
   return {
     reports: {
@@ -36,28 +76,48 @@ export function modRecord(subject) {
       week: reports.filter((report) => now - report.at < WEEK).length,
       lifetime: subject.reportsTotal ?? reports.length,
     },
-    flags: { week: { total: 0 }, lifetime: { total: 0, signals: {} } },
-    verdict: subject.verdict ? { level: subject.verdict.level, reason: subject.verdict.reason } : undefined,
+    flags: {
+      week: { total: flagsSince(subject.flagLog ?? [], now - WEEK) },
+      lifetime: { total: Object.values(signals).reduce((sum, value) => sum + value, 0), signals },
+    },
+    verdict: verdict ? { level: verdict.level, reason: verdict.reason, until: verdict.until } : undefined,
     session: subject.session ? { ...subject.session, ip: subject.session.ip ? hashIp(subject.session.ip) : undefined } : undefined,
     recent: reports.slice(0, 10).map((report) => ({ by: report.by, at: report.at, reason: report.reason })),
   };
 }
 
-export function applyVerdict(ctx, subject, level, reason, by, withIp) {
+export function applyVerdict(ctx, subject, level, reason, by, withIp, until) {
   const ip = subject.session?.ip;
+  until = until || undefined;
 
   if (level === "clear") {
     subject.verdict = null;
     if (withIp && ip) delete ctx.store.ipBans[ip];
   } else {
-    subject.verdict = { level, reason: reason || undefined, at: Date.now(), by };
+    subject.verdict = { level, reason: reason || undefined, at: Date.now(), by, until };
     if (level === "ban" && withIp && ip) {
-      ctx.store.ipBans[ip] = { reason: reason || undefined, at: Date.now(), by, subject: subject.id };
+      ctx.store.ipBans[ip] = { reason: reason || undefined, at: Date.now(), by, subject: subject.id, until };
     }
   }
 
   ctx.store.save();
   ctx.notifyServers("/internal/moderate", { ...targetOf(subject), action: level, reason });
+}
+
+export function recordSaid(store, subject, entry) {
+  if (!subject || !SAID_KINDS.has(entry.kind)) return;
+  subject.said ??= [];
+  subject.said.unshift({
+    kind: entry.kind,
+    clan: entry.clan || undefined,
+    to: entry.to ? { name: entry.to.name } : undefined,
+    server: entry.server || undefined,
+    text: String(entry.text).slice(0, 240),
+    at: entry.at ?? Date.now(),
+    shadow: entry.shadow || undefined,
+  });
+  subject.said.length = Math.min(subject.said.length, SAID_KEEP);
+  store.save();
 }
 
 async function staffCall(ctx, body) {
@@ -74,6 +134,15 @@ export const modRoutes = {
     const { subject, error } = await staffCall(ctx, body);
     if (error) return error;
     return subject ? ok(modRecord(subject)) : fail(404, "not found");
+  },
+
+  "POST /mod/messages": async (ctx, { body }) => {
+    const from = typeof body.from === "string" ? body.from : "";
+    const target = subjectById(ctx.store, from) ?? ctx.store.userByName(from);
+    const { subject, error } = await staffCall(ctx, { auth: body.auth, id: target ? feedId(target) : "" });
+    if (error) return error;
+    if (!subject) return fail(404, "not found");
+    return ok({ messages: subject.said ?? [] });
   },
 
   "POST /mod/kick": async (ctx, { body }) => {
@@ -95,7 +164,9 @@ export const modRoutes = {
     if (!subject) return fail(404, "not found");
     if (!LEVELS.has(body.level)) return fail(400, "invalid");
 
-    applyVerdict(ctx, subject, body.level, String(body.reason ?? "").slice(0, 200), actor.name ?? actor.id, Boolean(body.ip));
+    const days = Number(body.days);
+    const until = Number.isFinite(days) && days > 0 ? Date.now() + Math.min(days, 3650) * 24 * 60 * 60 * 1000 : undefined;
+    applyVerdict(ctx, subject, body.level, String(body.reason ?? "").slice(0, 200), actor.name ?? actor.id, Boolean(body.ip), until);
     return ok();
   },
 

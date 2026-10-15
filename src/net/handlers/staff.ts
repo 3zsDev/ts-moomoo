@@ -23,7 +23,6 @@ export interface PlayerStats {
 type StatsListener = (stats: PlayerStats) => void;
 
 const listeners = new Set<StatsListener>();
-let requestedSid = -1;
 
 export function onPlayerStats(listener: StatsListener): () => void {
   listeners.add(listener);
@@ -31,9 +30,7 @@ export function onPlayerStats(listener: StatsListener): () => void {
 }
 
 export function requestPlayerStats(sid: number): void {
-  if (sid === requestedSid) return;
-  requestedSid = sid;
-  if (sid !== -1) connection.send(ClientPacket.RequestPlayerStats, sid);
+  connection.send(ClientPacket.RequestPlayerStats, sid);
 }
 
 export function playerStats(
@@ -57,7 +54,7 @@ export function awaitPlayerProfile<T>(sid: number, fallback: () => Promise<T | n
     setTimeout(() => {
       if (pendingProfile !== request) return;
       pendingProfile = null;
-      fallback().then(resolve, () => resolve(null));
+      resolve(fallback());
     }, PROFILE_WAIT);
   });
 }

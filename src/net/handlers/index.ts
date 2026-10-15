@@ -1,6 +1,7 @@
 import { addTelegraph } from "../../render/layers/telegraphs";
+import { answerChallenge } from "../../security/challenge";
 import { refreshLeaderboard } from "../../ui/hud/leaderboard";
-import { serverShutdownNotice } from "../../ui/hud/ping";
+import { gameUpdatedNotice, serverShutdownNotice } from "../../ui/hud/ping";
 import { applyStoreUpdate } from "../../ui/store";
 import type { PacketHandlers } from "../Connection";
 import { ServerPacket } from "../protocol";
@@ -71,5 +72,7 @@ export function createHandlers(hooks: session.HandlerHooks): PacketHandlers {
     [ServerPacket.PingMap]: misc.pingMap,
     [ServerPacket.PingSocketResponse]: misc.pingSocketResponse,
     [ServerPacket.ServerShutdownNotice]: serverShutdownNotice,
+    [ServerPacket.GameUpdated]: gameUpdatedNotice,
+    [ServerPacket.SecurityChallenge]: answerChallenge,
   };
 }

@@ -9,6 +9,7 @@ import { camera } from "../camera";
 import { painter, textLayer, view } from "../surface";
 import { icons } from "../sprites";
 import { hidesOwnName } from "../../ui/anonMode";
+import type { LabelPiece } from "../painter";
 
 const TAG_SCALE = 0.7;
 const CLANMATE_COLOR = "#ff6b6b";
@@ -50,7 +51,7 @@ export function renderOverlays(delta: number): void {
 
   if (boss) renderBossBar(boss);
 
-  textManager.update(delta, painter, camera.left, camera.top);
+  textManager.update(delta, textLayer.painter, camera.left, camera.top);
   renderChatBubbles(delta);
 }
 
@@ -73,25 +74,20 @@ function renderNameAndHealth(entity: Player | Animal): void {
       !(player.team && player.team === me?.team);
     const color = clanmate ? CLANMATE_COLOR : "#fff";
 
-    const label = textLayer.painter;
-    const tagWidth = tag.text ? label.measureText(`${tag.text} `, tagSize) : 0;
-    const total = tagWidth + label.measureText(name, size);
-    const left = screenX - total / 2;
-
+    // one label sprite: every piece shares the outline, all strokes go down before the fills
+    const pieces: LabelPiece[] = [];
+    const add = (text: string, pieceSize: number, pieceColor: string) => {
+      if (text) pieces.push({ text, size: pieceSize, color: pieceColor });
+    };
     if (tag.text) {
-      label.text(`${tag.text} `, left + tagWidth / 2, nameY, tagSize, {
-        color, outline: paletteColors.hudDark, outlineWidth: outlineWidth * TAG_SCALE,
-      });
+      add(tag.before, tagSize, color);
+      add(tag.gold, tagSize, clanmate ? color : CLAN_GOLD);
+      add(`${tag.text.slice(tag.before.length + tag.gold.length)} `, tagSize, color);
     }
-    label.text(name, left + tagWidth + (total - tagWidth) / 2, nameY, size, {
-      color, outline: paletteColors.hudDark, outlineWidth,
-    });
-    if (tag.gold && !clanmate) {
-      const goldX = left + label.measureText(tag.before, tagSize) + label.measureText(tag.gold, tagSize) / 2;
-      label.text(tag.gold, goldX, nameY, tagSize, { color: CLAN_GOLD });
-    }
+    add(name, size, color);
+    const width = textLayer.painter.label(pieces, screenX, nameY, { outline: paletteColors.hudDark, outlineWidth });
 
-    renderNameIcons(player, screenX, nameY, total / 2);
+    renderNameIcons(player, screenX, nameY, width / 2);
   }
 
   if (entity.health <= 0) return;
@@ -183,7 +179,9 @@ function renderBossBar(boss: Player | Animal): void {
   const submerged = state === 1 || state === 2 || state === 3;
 
   painter.globalAlpha = 1;
-  painter.text(boss.name ?? "", centre, y - 26, 30, { color: "#fff", outline: paletteColors.hudDark, outlineWidth: 8 });
+  textLayer.painter.label([{ text: boss.name ?? "", size: 30, color: "#fff" }], centre, y - 26, {
+    outline: paletteColors.hudDark, outlineWidth: 8,
+  });
   painter.fillStyle = paletteColors.hudDark;
   painter.fillRoundRect(left - 5, y - 5, width + 10, 28, 12);
   painter.fillStyle = submerged ? "#5f87c4" : "#cc5151";
@@ -199,7 +197,7 @@ function renderChatBubbles(delta: number): void {
 
     const x = player.x - camera.left;
     const y = player.y - player.scale - camera.top - 90;
-    const width = painter.measureText(player.chatMessage, 32) + 17;
+    const width = textLayer.painter.measureText(player.chatMessage, 32) + 17;
 
     painter.fillStyle = "rgba(0,0,0,0.2)";
     painter.fillRoundRect(x - width / 2, y - 47 / 2, width, 47, 6);

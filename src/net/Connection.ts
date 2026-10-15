@@ -1,8 +1,9 @@
+import { bundleName, bundleReady, bundleSettled, computeSeal, hashSeal } from "../security/seal";
 import { createSocket, sendOnSocket } from "../security/socket";
 import { hexToBytes, hmacSha256 } from "./crypto";
 import { decode, encode, type MsgPackValue } from "./msgpack";
 import {
-  buildCipherTables, BUILD_SALT, FULL_SHUFFLED_MODE, MAC_LENGTH, mixKey, SHUFFLED_MODE,
+  buildCipherTables, BUILD_SALT, FULL_SHUFFLED_MODE, LIVE_BUNDLE, MAC_LENGTH, mixKey, SHUFFLED_MODE,
   type CipherTables, type ClientPacketType,
 } from "./protocol";
 
@@ -11,9 +12,9 @@ export type PacketHandlers = Record<string, (...args: any[]) => void>;
 
 const CLOSE_REASONS: Record<number, string> = {
   4001: "Invalid Connection",
-  4002: "Server closed the connection (code 4002)",
-  4003: "Kicked",
-  4004: "Server closed the connection (code 4004)",
+  4002: "Game updated - please reload",
+  4003: "Sign in to play on this server",
+  4004: "Please play at moomoo.io",
 };
 
 interface CipherState {
@@ -24,7 +25,13 @@ interface CipherState {
   pinned: boolean;
   c2sMask: number | null;
   s2cMask: number | null;
+  seal: number | null;
 }
+
+const SealMode = {
+  Report: 1,
+  MixKey: 2,
+} as const;
 
 type PacketFormat = "flat" | "nested";
 
@@ -90,6 +97,12 @@ export class Connection {
   public connect(url: string, onReady: (error?: string) => void, handlers: PacketHandlers): void {
     if (this.socket) return;
 
+    const socketUrl = new URL(url);
+    if (socketUrl.searchParams.has("b")) {
+      socketUrl.searchParams.set("u", LIVE_BUNDLE ?? bundleName());
+      url = socketUrl.toString();
+    }
+
     let sock: WebSocket;
     try {
       sock = createSocket(url);
@@ -114,8 +127,22 @@ export class Connection {
       this.connected = true;
     };
 
-    sock.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+    let queued: MessageEvent<ArrayBuffer>[] | null = null;
+    const onMessage = (event: MessageEvent<ArrayBuffer>) => {
       if (stale()) return;
+      if (queued) {
+        queued.push(event);
+        return;
+      }
+      if (!this.cipher && !receivedIoInit && !bundleSettled()) {
+        queued = [event];
+        void bundleReady.then(() => {
+          const waiting = queued ?? [];
+          queued = null;
+          waiting.forEach(onMessage);
+        });
+        return;
+      }
       let bytes = new Uint8Array(event.data);
       if (this.cipher?.pinned && this.cipher.s2cMask !== null) {
         const sequence = ++this.cipher.received;
@@ -141,7 +168,7 @@ export class Connection {
         this.packetFormat = nested ? "nested" : "flat";
         args = nested ? decoded[1] as MsgPackValue[] : decoded.slice(1);
 
-        const [socketId, seed, key, mode, pinned] = args;
+        const [socketId, seed, key, mode, pinned, sealMode] = args;
         let keyBytes = bytesFromKey(key);
         const isPinned = pinned === 1 || pinned === true;
         if (
@@ -166,9 +193,11 @@ export class Connection {
         this.socketId = socketId;
         if (mode === SHUFFLED_MODE || mode === FULL_SHUFFLED_MODE) {
           let tables: CipherTables;
+          const seal = isPinned && sealMode ? computeSeal([Connection.prototype.send, Connection.prototype.connect]) : null;
 
           if (isPinned) {
             keyBytes = mixKey(keyBytes, seed >>> 0);
+            if (seal && sealMode === SealMode.MixKey) keyBytes = keyBytes.map((byte, index) => byte ^ (seal[index] ?? 0));
             tables = buildCipherTables(seed >>> 0, BUILD_SALT);
           } else {
             tables = buildCipherTables(seed >>> 0, null, mode === FULL_SHUFFLED_MODE);
@@ -183,6 +212,7 @@ export class Connection {
             pinned: masks !== null,
             c2sMask: masks?.c2s ?? null,
             s2cMask: masks?.s2c ?? null,
+            seal: seal ? hashSeal(seal, seed >>> 0) : null,
           };
         } else {
           this.cipher = null;
@@ -218,6 +248,7 @@ export class Connection {
       }
       handlers[String(type)]?.(...args);
     };
+    sock.onmessage = onMessage;
 
     sock.onclose = (event: CloseEvent) => {
       if (stale()) return;
@@ -268,6 +299,10 @@ export class Connection {
       xorPacket(frame.subarray(MAC_LENGTH), seed);
     }
     sendOnSocket(this.socket, frame);
+  }
+
+  public seal(): number | null {
+    return this.cipher?.seal ?? null;
   }
 
   public isPinned(): boolean {

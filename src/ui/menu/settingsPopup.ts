@@ -1,4 +1,3 @@
-import { isSandbox } from "../../environment";
 import { isCapturingKey } from "../../input";
 import { account } from "../../net/api";
 import { trusted } from "../../security/trusted";
@@ -19,7 +18,7 @@ export function refreshSocialNote(): void {
   const prefs = byId("accountPrefs");
   note.textContent = prefs.style.display !== "none"
     ? ""
-    : isSandbox() ? "These aren't used on sandbox." : "Sign in to change these.";
+    : account.name ? "These aren't used on sandbox." : "Sign in to change these.";
   note.style.display = note.textContent ? "" : "none";
 }
 

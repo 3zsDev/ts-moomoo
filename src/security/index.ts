@@ -3,7 +3,9 @@ import { protection, type ProtectionOptions } from "./options";
 import { raiseSecurityFlag, SecurityFlag } from "./telemetry";
 import { detectUserscripts } from "./userscriptDetection";
 
+export { answerChallenge, probeMask, runChallenge, setChallenge, type ChallengeProbe } from "./challenge";
 export { protection, type ProtectionOptions } from "./options";
+export { guard } from "./seal";
 export { createSocket, sendOnSocket } from "./socket";
 export { securityFlags } from "./telemetry";
 export { ignoreSyntheticClicks, isTrustedEvent, trusted, untrustedEventCount } from "./trusted";

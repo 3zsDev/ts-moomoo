@@ -21,7 +21,7 @@ export function joinAnonFlag(): 0 | 1 {
 }
 
 function sendAnon(): void {
-  if (!connection.isReady() || !account.name) return;
+  if (!connection.isReady() || !connection.isPinned() || !account.name) return;
   connection.send(ClientPacket.SetAnonymous, anon ? 1 : 0);
   lastSent = Date.now();
 }

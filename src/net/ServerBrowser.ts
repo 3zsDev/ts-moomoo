@@ -40,6 +40,7 @@ export interface ServerEntry {
   httpUrl?: string;
   wsUrl?: string;
   liveHost?: string;
+  restartAt?: number;
 }
 
 export interface ServerAddress {
@@ -145,8 +146,17 @@ export class ServerBrowser {
     return this.entries.find((entry) => entry.region == region && entry.name == name) ?? null;
   }
 
+  private isSelected(entry: ServerEntry): boolean {
+    return this.selection?.region == entry.region && this.selection?.name == entry.name;
+  }
+
+  private withoutRestarting(list: ServerEntry[]): ServerEntry[] {
+    const staying = list.filter((entry) => !entry.restartAt);
+    return staying.length ? staying : list;
+  }
+
   private bestIn(region: string): ServerEntry | null {
-    let open = this.inRegion(region).filter((entry) => this.joinable(entry));
+    let open = this.withoutRestarting(this.inRegion(region).filter((entry) => this.joinable(entry)));
     if (this.policy.isMember() && open.some((entry) => entry.auth)) open = open.filter((entry) => entry.auth);
     open.sort((a, b) => b.playerCount - a.playerCount);
     return open[0] ?? null;
@@ -170,11 +180,29 @@ export class ServerBrowser {
 
   public serversIn(region: string | null): ServerEntry[] {
     if (region == null) return [];
-    return this.inRegion(region).sort((a, b) => b.playerCount - a.playerCount);
+    const all = this.inRegion(region);
+    const shown = all.filter((entry) => !entry.restartAt || this.isSelected(entry));
+    return (shown.some((entry) => !entry.restartAt) ? shown : all).sort((a, b) => b.playerCount - a.playerCount);
   }
 
   public totalPlayers(): number {
     return this.entries.reduce((sum, entry) => sum + entry.playerCount, 0);
+  }
+
+  public byKey(key: string): ServerEntry | null {
+    return this.entries.find((entry) => entry.key == key) ?? null;
+  }
+
+  public keyOf(key: string): string {
+    const server = this.byKey(key);
+    return server ? `${server.region}:${server.name}` : "";
+  }
+
+  public setCount(key: string, count: number): void {
+    const server = this.byKey(key);
+    if (!server || server.playerCount === count) return;
+    server.playerCount = count;
+    this.emit("refresh");
   }
 
   public selected(): ServerEntry | null {
@@ -292,9 +320,9 @@ export class ServerBrowser {
     if (!this.selection) return null;
     const current = this.selection.name;
     const member = this.policy.isMember();
-    const others = this.inRegion(this.selection.region)
-      .filter((entry) => entry.name != current && this.joinable(entry))
-      .sort((a, b) => (member ? Number(Boolean(b.auth)) - Number(Boolean(a.auth)) : 0) || b.playerCount - a.playerCount);
+    const others = this.withoutRestarting(
+      this.inRegion(this.selection.region).filter((entry) => entry.name != current && this.joinable(entry)),
+    ).sort((a, b) => (member ? Number(Boolean(b.auth)) - Number(Boolean(a.auth)) : 0) || b.playerCount - a.playerCount);
 
     const target = others[0];
     if (!target) return null;
@@ -367,7 +395,7 @@ export class ServerBrowser {
         .then((response) => response.json() as Promise<ServerEntry[]>)
         .catch(() => null),
       liveProxyAvailable()
-        ? fetch(`${liveApi}/servers?v=1.30`, { signal: AbortSignal.timeout(8000) })
+        ? fetch(`${liveApi}/servers?v=1.31`, { signal: AbortSignal.timeout(8000) })
           .then((response) => response.json() as Promise<ServerEntry[]>)
           .catch(() => null)
         : Promise.resolve(null),

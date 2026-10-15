@@ -1,4 +1,5 @@
 import { assetUrl } from "../../assetBase";
+import { animalTypes } from "../../data/animals";
 
 export interface LoadedImage extends HTMLImageElement {
   isLoaded?: boolean;
@@ -45,3 +46,21 @@ export const icons = {
     return sprites.icon("skull");
   },
 };
+
+// live loads the leader crown and skull icons when the menu is set up
+export function preloadIcons(): void {
+  void icons.crown;
+  void icons.skull;
+}
+
+// live warms every animal sprite once the page goes idle
+function warmAnimalSprites(): void {
+  for (const type of animalTypes) {
+    if (type.src) sprites.animal(type.src);
+  }
+}
+
+if (typeof window !== "undefined") {
+  if (window.requestIdleCallback) window.requestIdleCallback(warmAnimalSprites, { timeout: 5e3 });
+  else setTimeout(warmAnimalSprites, 2e3);
+}

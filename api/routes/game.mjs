@@ -1,14 +1,20 @@
 import { randomBytes } from "node:crypto";
 
-import { fail, isInternal, ok, RateLimiter } from "../lib/http.mjs";
+import { fail, internalOnly, ok, RateLimiter } from "../lib/http.mjs";
 import { bump } from "../lib/periods.mjs";
 import { clanOf, isStaff, recordLifeLook, signedIn } from "./accounts.mjs";
-import { applyVerdict } from "./mod.mjs";
+import { applyVerdict, feedId, ipBanOf, recordSaid, verdictOf } from "./mod.mjs";
+import { staffFeed } from "./social.mjs";
 
 const TURNSTILE_SECRET = process.env.TURNSTILE_SECRET ?? "";
 const VPN_CHECK_URL = process.env.VPN_CHECK_URL ?? "";
 const TICKET_TTL = 2 * 60 * 1000;
 const REPORT_COOLDOWN = 10 * 60 * 1000;
+const REPORT_FEED_DELAY = 1500;
+const CAPTCHA_PASS = 10 * 60 * 1000;
+const EVENT_GAP = 30 * 1000;
+const EVENT_KINDS = new Set(["boss", "clan_top"]);
+const FLAG_LOG = 200;
 const REPORT_REASONS = ["Bot", "Hack", "Autoheal", "Abuse"];
 const MAX_REPORTS = 200;
 const DEVICE_ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -20,10 +26,13 @@ const ANIMAL_KEYS = new Set([
 
 const joins = new RateLimiter(30, 60 * 1000);
 const tickets = new Map();
+const captchaPassed = new Map();
+const lastEvents = new Map();
 
 setInterval(() => {
   const now = Date.now();
   for (const [ticket, entry] of tickets) if (now - entry.at > TICKET_TTL) tickets.delete(ticket);
+  for (const [did, at] of captchaPassed) if (now - at > CAPTCHA_PASS) captchaPassed.delete(did);
 }, 60 * 1000).unref();
 
 async function captchaValid(token, ip) {
@@ -42,21 +51,23 @@ async function captchaValid(token, ip) {
 
 const vpnCache = new Map();
 
-async function isProxy(ip) {
-  if (!VPN_CHECK_URL || !ip || ip === "127.0.0.1" || ip === "::1") return false;
+async function networkKind(ip) {
+  if (!VPN_CHECK_URL || !ip || ip === "127.0.0.1" || ip === "::1") return null;
   const cached = vpnCache.get(ip);
-  if (cached && Date.now() - cached.at < 60 * 60 * 1000) return cached.proxy;
+  if (cached && Date.now() - cached.at < 60 * 60 * 1000) return cached.kind;
 
-  let proxy = false;
+  let kind = null;
   try {
     const response = await fetch(VPN_CHECK_URL.replace("{ip}", encodeURIComponent(ip)), { signal: AbortSignal.timeout(3000) });
     const data = await response.json();
     const entry = data?.[ip] ?? data;
-    proxy = entry?.proxy === true || entry?.proxy === "yes" || entry?.vpn === true || entry?.vpn === "yes";
+    const proxy = entry?.proxy === true || entry?.proxy === "yes" || entry?.vpn === true || entry?.vpn === "yes";
+    const hosting = entry?.hosting === true || /hosting|data ?cent(er|re)/i.test(String(entry?.type ?? ""));
+    kind = proxy ? "vpn" : hosting ? "hosting" : null;
   } catch {}
-  vpnCache.set(ip, { proxy, at: Date.now() });
+  vpnCache.set(ip, { kind, at: Date.now() });
   if (vpnCache.size > 10000) vpnCache.clear();
-  return proxy;
+  return kind;
 }
 
 export function lockKeys(subject, ip) {
@@ -71,26 +82,39 @@ function count(value) {
 }
 
 function banned(subject) {
-  return subject?.verdict?.level === "ban";
+  return verdictOf(subject)?.level === "ban";
 }
 
-function internalOnly(handler) {
-  return (ctx, request) => (isInternal(request.req) ? handler(ctx, request) : fail(403, "forbidden"));
+function bannedAnswer(ban) {
+  return { status: 403, body: { error: "banned", until: ban?.until || undefined } };
+}
+
+function subjectOfReport(store, entry) {
+  if (entry?.account) return store.users[String(entry.account)] ?? null;
+  return entry?.did ? store.guest(String(entry.did)) : null;
 }
 
 export const gameRoutes = {
   "POST /join": async (ctx, { body, ip }) => {
     if (!joins.allow(ip)) return fail(429, "slow down");
-    if (ctx.store.ipBans[ip]) return fail(403, "banned");
-    if (typeof body.captcha === "string" && !(await captchaValid(body.captcha, ip))) return fail(403, "captcha");
+    const ipBan = ipBanOf(ctx.store, ip);
+    if (ipBan) return bannedAnswer(ipBan);
+    const captcha = typeof body.captcha === "string" && body.captcha ? body.captcha : null;
+    if (captcha && !(await captchaValid(captcha, ip))) return fail(403, "captcha");
 
     const user = body.auth ? await signedIn(ctx, body.auth) : null;
     const did = typeof body.did === "string" && DEVICE_ID.test(body.did) ? body.did : randomBytes(16).toString("hex");
-    if (banned(user) || banned(ctx.store.guests[did])) return fail(403, "banned");
+    if (!user && !captcha && TURNSTILE_SECRET && !captchaPassed.has(did)) return fail(403, "captcha");
+    if (banned(user)) return bannedAnswer(user.verdict);
+    if (banned(ctx.store.guests[did])) return bannedAnswer(ctx.store.guests[did].verdict);
 
     const seconds = ctx.store.lockedFor([user?.id ?? `g:${did}`, `ip:${ip}`]);
     if (seconds) return { status: 403, body: { error: "locked", seconds } };
-    if (!user && (await isProxy(ip))) return fail(403, "vpn");
+    if (!user) {
+      const network = await networkKind(ip);
+      if (network) return fail(403, network);
+    }
+    if (captcha && !user) captchaPassed.set(did, Date.now());
 
     const ticket = randomBytes(24).toString("base64url");
     tickets.set(ticket, { userId: user?.id ?? null, did, at: Date.now() });
@@ -113,7 +137,7 @@ export const gameRoutes = {
       if (!(await captchaValid(token.slice(3), ip))) return ok({ ok: false, reason: "captcha" });
     }
 
-    if (ctx.store.ipBans[ip]) return ok({ ok: false, reason: "banned" });
+    if (ipBanOf(ctx.store, ip)) return ok({ ok: false, reason: "banned" });
 
     did ??= randomBytes(16).toString("hex");
     const user = userId ? ctx.store.users[userId] ?? null : null;
@@ -128,7 +152,7 @@ export const gameRoutes = {
     return ok({
       ok: true,
       did,
-      shadow: subject.verdict?.level === "shadow",
+      shadow: verdictOf(subject)?.level === "shadow",
       account: user ? { id: user.id, name: user.name, role: user.role, clan: clan?.name ?? null } : null,
     });
   }),
@@ -173,9 +197,7 @@ export const gameRoutes = {
     const reporter = body.reporter ?? {};
     const target = body.target ?? {};
     const reporterUser = reporter.account ? ctx.store.users[String(reporter.account)] : null;
-    const subject = target.account
-      ? ctx.store.users[String(target.account)]
-      : target.did ? ctx.store.guest(String(target.did)) : null;
+    const subject = subjectOfReport(ctx.store, target);
     if (!subject) return ok();
 
     const action = Number(body.action) || 0;
@@ -208,6 +230,72 @@ export const gameRoutes = {
     subject.reports.length = Math.min(subject.reports.length, MAX_REPORTS);
     subject.reportsTotal = (subject.reportsTotal ?? 0) + 1;
     ctx.store.save();
+
+    const report = subject.reports[0];
+    setTimeout(() => {
+      const since = Math.min(subject.session?.at ?? Infinity, Date.now() - REPORT_COOLDOWN);
+      const reporters = new Set(subject.reports.filter((entry) => entry.at >= since).map((entry) => entry.from)).size;
+      staffFeed(ctx, {
+        kind: "report",
+        target: { id: feedId(subject), name: subject.name ?? (String(target.name ?? "") || undefined) },
+        by: { name: report.by.name },
+        reason: report.reason,
+        reporters,
+        server: ctx.listKey(report.server),
+        at: report.at,
+      });
+    }, REPORT_FEED_DELAY).unref();
+    return ok();
+  }),
+
+  "POST /internal/flags": internalOnly(async (ctx, { body }) => {
+    const subject = subjectOfReport(ctx.store, body.target);
+    if (!subject) return ok();
+
+    const counts = {};
+    for (const [key, value] of Object.entries(body.counts ?? {})) {
+      if (/^[a-z0-9_]{1,32}$/.test(key) && count(value)) counts[key] = count(value);
+    }
+    if (!Object.keys(counts).length) return ok();
+
+    subject.flagLog ??= [];
+    subject.flagLog.unshift({ at: Date.now(), counts });
+    subject.flagLog.length = Math.min(subject.flagLog.length, FLAG_LOG);
+    subject.flagTotals ??= {};
+    for (const [key, value] of Object.entries(counts)) subject.flagTotals[key] = (subject.flagTotals[key] ?? 0) + value;
+    ctx.store.save();
+
+    staffFeed(ctx, {
+      kind: "flags",
+      target: { id: feedId(subject), name: subject.name ?? (String(body.target?.name ?? "") || undefined) },
+      counts,
+      server: ctx.listKey(String(body.server ?? "")),
+      at: Date.now(),
+    });
+    return ok();
+  }),
+
+  "POST /internal/chat": internalOnly(async (ctx, { body }) => {
+    const subject = subjectOfReport(ctx.store, body);
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!subject || !text) return ok();
+    recordSaid(ctx.store, subject, { kind: "game", server: String(body.server ?? ""), text, shadow: Boolean(body.shadow) });
+    return ok();
+  }),
+
+  "POST /internal/event": internalOnly(async (ctx, { body }) => {
+    const kind = String(body.kind ?? "");
+    const server = String(body.server ?? "");
+    if (!EVENT_KINDS.has(kind) || !server) return fail(400, "invalid");
+    const clan = typeof body.clan === "string" ? body.clan.slice(0, 8) : undefined;
+    if (kind === "clan_top" && (!clan || ctx.store.clanByName(clan)?.shadow)) return ok();
+
+    const key = `${kind}|${server}|${clan ?? ""}`;
+    if (Date.now() - (lastEvents.get(key) ?? 0) < EVENT_GAP) return ok();
+    lastEvents.set(key, Date.now());
+
+    const by = typeof body.by === "string" ? body.by.slice(0, 30) || undefined : undefined;
+    ctx.hub.broadcast("event", { kind, server: ctx.listKey(server), by, clan });
     return ok();
   }),
 
@@ -221,12 +309,22 @@ export const gameRoutes = {
     const host = address.includes(":") ? `[${address}]` : address;
     const port = Number(body.port) || null;
 
-    ctx.servers.set(`${body.region ?? "0"}:${body.name ?? "1"}`, {
-      playerCount: count(body.playerCount),
+    const key = `${body.region ?? "0"}:${body.name ?? "1"}`;
+    const before = ctx.servers.get(key);
+    const playerCount = count(body.playerCount);
+    const restartAt = Number(body.restartAt) > Date.now() ? Number(body.restartAt) : undefined;
+
+    ctx.servers.set(key, {
+      playerCount,
       sandbox: Boolean(body.sandbox),
       url: port ? `http://${host}:${port}` : null,
+      restartAt,
       at: Date.now(),
     });
+    if (!before || before.gone || before.playerCount !== playerCount) {
+      ctx.hub.broadcast("count", { server: ctx.listKey(key), n: playerCount });
+    }
+    if (Array.isArray(body.players)) ctx.presence.snapshot(key, body.players, body.sandbox);
     return ok();
   }),
 };

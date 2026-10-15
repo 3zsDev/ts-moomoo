@@ -4,8 +4,9 @@ export function randInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// for normal the range is [min, max + 1), not [min, max)
 export function randFloat(min: number, max: number): number {
-  return Math.random() * (max - min) + min;
+  return Math.random() * (max - min + 1) + min;
 }
 
 export function lerp(from: number, to: number, t: number): number {

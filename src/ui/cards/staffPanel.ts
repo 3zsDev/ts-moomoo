@@ -17,7 +17,17 @@ interface ModRecord {
   recent?: { by: { name?: string; kind?: string }; at: number; reason?: string }[];
 }
 
-function timeAgo(at: number): string {
+interface KeptMessage {
+  kind: "clan" | "whisper" | "game";
+  text: string;
+  at: number;
+  clan?: string;
+  to?: { name?: string };
+  server?: string;
+  shadow?: boolean;
+}
+
+export function timeAgo(at: number): string {
   const minutes = Math.max(0, Math.round((Date.now() - at) / 60000));
   if (minutes < 60) return `${minutes}m ago`;
   if (minutes < 1440) return `${Math.round(minutes / 60)}h ago`;
@@ -65,6 +75,42 @@ function fillRecord(info: HTMLElement, record: ModRecord | null): void {
     const reason = report.reason ? ` for ${report.reason}` : "";
     line(info, "", `Reported by ${report.by.name || "unnamed"}${guest}${reason} · ${timeAgo(report.at)}`);
   }
+}
+
+function loadMessages(target: StaffTarget, holder: HTMLElement): void {
+  holder.textContent = "";
+  createElement({ class: "staffLine", text: "Loading messages...", parent: holder });
+  postWithAuth("/mod/messages", { from: target.id || target.name })
+    .then((response) => (response.ok ? (response.json() as Promise<{ messages?: KeptMessage[] }>) : null))
+    .then((data) => {
+      holder.textContent = "";
+      const messages = data?.messages ?? [];
+      if (!messages.length) {
+        createElement({
+          class: "staffLine",
+          text: data ? "Nothing kept of what they have said" : "Couldn't load messages",
+          parent: holder,
+        });
+        return;
+      }
+      for (const message of messages) {
+        const where = message.kind === "clan" ? `clan [${message.clan || ""}]`
+          : message.kind === "whisper" ? `to ${message.to?.name || "?"}`
+          : `in ${String(message.server || "game").split(".")[0]}`;
+        createElement({
+          class: "staffLine said",
+          parent: holder,
+          children: [
+            createElement({ tag: "label", text: `${timeAgo(message.at)} · ${where}${message.shadow ? " · shadowed" : ""}` }),
+            createElement({ tag: "span", text: message.text }),
+          ],
+        });
+      }
+    })
+    .catch(() => {
+      holder.textContent = "";
+      createElement({ class: "staffLine", text: "Couldn't load messages", parent: holder });
+    });
 }
 
 function armedButton(
@@ -135,4 +181,7 @@ export function renderStaffPanel(actions: HTMLElement, status: HTMLElement, targ
     if (target.role === "mod") armedButton(buttons, "Remove mod", "/mod/role", () => ({ name, role: "none" }), status);
     else if (!target.role) armedButton(buttons, "Make mod", "/mod/role", () => ({ name, role: "mod" }), status);
   }
+
+  const said = createElement({ class: "staffInfo staffSaid", parent: panel });
+  createElement({ class: "staffAction", text: "Messages", parent: buttons, onclick: () => loadMessages(target, said) });
 }

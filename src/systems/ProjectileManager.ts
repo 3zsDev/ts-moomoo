@@ -40,7 +40,7 @@ export class ProjectileManager {
 
     projectile.init(typeIndex, x, y, dir, speed, type.dmg, range, type.scale, owner);
     projectile.ignoreObj = ignoreObj ?? null;
-    projectile.layer = layer ?? type.layer;
+    projectile.layer = layer || type.layer;
     projectile.src = type.src;
     return projectile;
   }

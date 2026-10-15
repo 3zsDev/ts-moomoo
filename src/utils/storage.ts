@@ -22,6 +22,13 @@ export function loadSetting(key: string): string | null {
   }
 }
 
+export function removeSetting(key: string): void {
+  if (!available) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {}
+}
+
 export function loadBool(key: string, fallback = false): boolean {
   const value = loadSetting(key);
   return value == null ? fallback : value === "true";

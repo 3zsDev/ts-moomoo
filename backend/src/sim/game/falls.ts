@@ -37,6 +37,7 @@ export interface FallsHost {
   readonly players: readonly Player[];
   readonly animalManager: AnimalManager;
   readonly hooks: ServerHooks;
+  onCrabKingKilled?(player: Player): void;
 }
 
 const falls = config.secretPool;
@@ -141,6 +142,7 @@ export class FallsDirector {
     if (!player?.isPlayer) return;
 
     this.crabKillers.add(player.sid);
+    this.host.onCrabKingKilled?.(player);
     if (!player.skins[CRAB_SHELL]) {
       player.skins[CRAB_SHELL] = 1;
       this.host.hooks.send(player.id, ServerPacket.UpdateStoreItems, 0, CRAB_SHELL, 0);

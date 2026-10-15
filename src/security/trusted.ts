@@ -8,8 +8,8 @@ export function isTrustedEvent(event: Event): boolean {
 
 export function trusted<E extends Event>(handler: (event: E) => void): (event: E) => void {
   return (event: E) => {
-    if (!protection.trustedInputOnly || !(event instanceof Event) || isTrustedEvent(event)) handler(event);
-    else untrusted++;
+    if (!protection.trustedInputOnly || (event instanceof Event && isTrustedEvent(event))) handler(event);
+    else if (event instanceof Event) untrusted++;
   };
 }
 

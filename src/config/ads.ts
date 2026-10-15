@@ -1,7 +1,7 @@
 export interface FrvrAdProviderConfig {
   name: string;
   type: string;
-  priority: number;
+  priority?: number;
   config?: Record<string, unknown>;
   adsConfig?: {
     banners?: Array<Record<string, unknown>>;
@@ -25,9 +25,10 @@ export const frvrAdsConfig: FrvrAdsConfig = {
   enabled: false,
   clientId: "ca-pub-6180084390675113",
   providers: [
-    { name: "web-interstitial", type: "interstitial", priority: 0 },
-    { name: "web-reward", type: "reward", priority: 1 },
+    { name: "adsbygoogle-interstitial", type: "interstitial", config: { timeout: 500 } },
+    { name: "adsbygoogle-reward", type: "reward", config: { timeout: 500 } },
   ],
+  throttling: { maxfrequency: 0 },
 };
 
 export function getFrvrAdsConfig(): FrvrAdsConfig {

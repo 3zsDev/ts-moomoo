@@ -15,9 +15,13 @@ export interface AccountPrefs {
   friendNotifs: boolean;
   friendRequests: boolean;
   clanInvites: boolean;
+  clanChat: boolean;
+  whispers: boolean;
 }
 
-const DEFAULT_PREFS: AccountPrefs = { friendNotifs: true, friendRequests: true, clanInvites: true };
+const DEFAULT_PREFS: AccountPrefs = {
+  friendNotifs: true, friendRequests: true, clanInvites: true, clanChat: true, whispers: true,
+};
 
 export const account = {
   // permanent name - really gay
@@ -67,8 +71,9 @@ interface AccountResponse {
   prefs?: Partial<AccountPrefs>;
 }
 
+// clan chat and whispers can't be turned off (yet), whatever the account says
 function setPrefs(prefs: Partial<AccountPrefs> | null | undefined): void {
-  account.prefs = { ...DEFAULT_PREFS, ...(prefs ?? {}) };
+  account.prefs = { ...DEFAULT_PREFS, ...(prefs ?? {}), clanChat: true, whispers: true };
 }
 
 export function savePref(key: keyof AccountPrefs, value: boolean): Promise<void> {
@@ -170,6 +175,8 @@ const AUTHED_ERRORS: Record<string, string> = {
   full: "That clan is full",
   closed: "That clan isn't taking requests to join",
   "no invites": "That player isn't taking clan invitations",
+  invited: "Already invited",
+  asked: "Already asked to join",
   "no player": "No player by that name",
   "no member": "No member by that name",
   "not found": "No clan by that name",
@@ -179,7 +186,26 @@ const AUTHED_ERRORS: Record<string, string> = {
   "slow down": "Too many requests - try again soon",
 };
 
-export function authedPost<T = Record<string, unknown>>(path: string, body: object = {}): Promise<T> {
+const SOCIAL_ERRORS: Record<string, string> = {
+  ...AUTHED_ERRORS,
+  "not friends": "Only your friends",
+  "not yours": "Only your friends and clan members",
+  closed: "They aren't taking whispers",
+  "slow down": "Too fast - wait a moment",
+  unclean: "That message isn't allowed",
+  empty: "Nothing to send",
+  "no clan": "You aren't in a clan",
+  denied: "You can't send messages",
+  "not found": "No player by that name",
+  "not in a game": "Join a game first",
+  auth: "Sign in first",
+};
+
+export const TOO_FAST = SOCIAL_ERRORS["slow down"];
+
+export function authedPost<T = Record<string, unknown>>(
+  path: string, body: object = {}, errors: Record<string, string> = AUTHED_ERRORS,
+): Promise<T> {
   return freshAccessToken()
     .then((auth) => apiPost(path, { auth, ...body }))
     .then((response) =>
@@ -188,11 +214,15 @@ export function authedPost<T = Record<string, unknown>>(path: string, body: obje
         .catch(() => ({}))
         .then((data: { error?: string }) => {
           if (!response.ok) {
-            throw new ApiError(AUTHED_ERRORS[data.error ?? ""] ?? "Something went wrong", response.status);
+            throw new ApiError(errors[data.error ?? ""] ?? "Something went wrong", response.status);
           }
           return data as T;
         }),
     );
+}
+
+export function socialPost<T = Record<string, unknown>>(path: string, body: object = {}): Promise<T> {
+  return authedPost<T>(path, body, SOCIAL_ERRORS);
 }
 
 export function postWithAuth(path: string, body: object = {}): Promise<Response> {

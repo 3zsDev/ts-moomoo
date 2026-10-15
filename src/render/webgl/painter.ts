@@ -61,11 +61,13 @@ export interface WebGLPainter extends Painter {
   drawCalls: number;
   atlasResets: number;
   contextRestores: number;
+  pageOf(source: PainterImage): number | undefined;
   atlasInfo(): { pageSize: number; pages: { areaUsed: number; heightReached: number }[]; sprites: number };
+  dumpAtlas(): HTMLCanvasElement[];
 }
 
 export function createWebGLPainter(target: HTMLCanvasElement, options: WebGLPainterOptions = {}): WebGLPainter | null {
-  const maxPages = Math.max(1, Math.min(MAX_PAGES, options.maxPages ?? MAX_PAGES));
+  const maxPages = Math.max(1, Math.min(MAX_PAGES, options.maxPages || MAX_PAGES));
   const gl = target.getContext("webgl", {
     alpha: Boolean(options.overlay),
     antialias: false,
@@ -74,7 +76,7 @@ export function createWebGLPainter(target: HTMLCanvasElement, options: WebGLPain
   });
   if (!gl) return null;
 
-  const pageSize = Math.min(options.pageSize ?? 2048, gl.getParameter(gl.MAX_TEXTURE_SIZE) as number);
+  const pageSize = Math.min(options.pageSize || 2048, gl.getParameter(gl.MAX_TEXTURE_SIZE) as number);
 
   let resolutionUniform: WebGLUniformLocation | null = null;
 
@@ -728,6 +730,10 @@ export function createWebGLPainter(target: HTMLCanvasElement, options: WebGLPain
       frameDrawCalls = 0;
     },
 
+    pageOf(source) {
+      return sprites.get(source)?.page;
+    },
+
     atlasInfo() {
       return {
         pageSize,
@@ -737,6 +743,34 @@ export function createWebGLPainter(target: HTMLCanvasElement, options: WebGLPain
         })),
         sprites: sprites.size,
       };
+    },
+
+    // reads every atlas page back into a canvas; transparent areas show as grey
+    dumpAtlas() {
+      flush();
+      return pages.map((page) => {
+        const framebuffer = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, page.texture, 0);
+        const pixels = new Uint8Array(pageSize * pageSize * 4);
+        gl.readPixels(0, 0, pageSize, pageSize, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(framebuffer);
+
+        const dump = document.createElement("canvas");
+        dump.width = dump.height = pageSize;
+        const dctx = dump.getContext("2d")!;
+        const image = dctx.createImageData(pageSize, pageSize);
+        for (let i = 0; i < pixels.length; i += 4) {
+          const grey = (255 - pixels[i + 3]) * 0.45;
+          image.data[i] = pixels[i] + grey;
+          image.data[i + 1] = pixels[i + 1] + grey;
+          image.data[i + 2] = pixels[i + 2] + grey;
+          image.data[i + 3] = 255;
+        }
+        dctx.putImageData(image, 0, 0);
+        return dump;
+      });
     },
   };
 

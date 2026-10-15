@@ -4,7 +4,7 @@ import { isLocal, queryParam } from "../environment";
 import { byId } from "../utils/dom";
 import { createCanvasPainter } from "./canvas/painter";
 import type { Painter } from "./painter";
-import { createWebGLPainter } from "./webgl/painter";
+import { createWebGLPainter, type WebGLPainterOptions } from "./webgl/painter";
 
 export const canvas = byId<HTMLCanvasElement>("gameCanvas", "canvas");
 
@@ -24,9 +24,9 @@ function webglUnavailable(overlay: boolean): void {
   }
 }
 
-function createPainter(target: HTMLCanvasElement, kind: RendererKind, overlay: boolean): Painter {
+function createPainter(target: HTMLCanvasElement, kind: RendererKind, overlay: boolean, atlas?: WebGLPainterOptions): Painter {
   if (kind === "webgl") {
-    const webgl = createWebGLPainter(target, { overlay });
+    const webgl = createWebGLPainter(target, { ...atlas, overlay });
     if (webgl) return webgl;
     webglUnavailable(overlay);
   }
@@ -38,7 +38,13 @@ function chosenRenderer(): RendererKind {
   return override === "canvas" || override === "webgl" ? override : render.renderer;
 }
 
-export const painter: Painter = createPainter(canvas, chosenRenderer(), false);
+// ?atlas=<pageSize>x<maxPages> shrinks the game canvas atlas, for testing atlas resets
+function atlasOverride(): WebGLPainterOptions | undefined {
+  const match = isLocal() ? /^(\d+)x(\d+)$/.exec(queryParam("atlas") ?? "") : null;
+  return match ? { pageSize: +match[1], maxPages: +match[2] } : undefined;
+}
+
+export const painter: Painter = createPainter(canvas, chosenRenderer(), false, atlasOverride());
 if (isLocal()) (window as unknown as { __painter: Painter }).__painter = painter;
 
 const TEXT_MAX_RATIO = 4;

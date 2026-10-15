@@ -2108,7 +2108,7 @@ export abstract class BaseChannel {
     if (types.has(AdType.INTERSTITIAL)) {
       providers.push(
         new AdsByGoogleAdProvider(
-          'web-interstitial',
+          'adsbygoogle-interstitial',
           AdType.INTERSTITIAL,
           'Interstitial',
           loader,
@@ -2119,7 +2119,7 @@ export abstract class BaseChannel {
     if (types.has(AdType.REWARD)) {
       providers.push(
         new AdsByGoogleAdProvider(
-          'web-reward',
+          'adsbygoogle-reward',
           AdType.REWARD,
           'Rewarded',
           loader,

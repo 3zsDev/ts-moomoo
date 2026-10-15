@@ -1,4 +1,6 @@
+import { isExtension } from "./assetBase";
 import { getFrvrAdsConfig } from "./config/ads";
+import { isSandbox } from "./environment";
 import "./sdk-libs/frvr-sdk.js";
 import { installFrvrChannel } from "./sdk-libs/frvr-channel-web.js";
 import "./sdk-libs/howler.js";
@@ -15,7 +17,7 @@ interface FrvrRuntime {
     levelStart?: (level: string) => void;
     levelEnd?: (level: string) => void;
   };
-  ads?: { show?: (kind: string) => Promise<unknown> };
+  ads?: { show?: (kind: string, done?: () => void) => Promise<unknown> };
   profile?: { name?: () => string };
   channelCharacteristics?: { allowNavigation?: boolean };
   bootstrapper?: {
@@ -37,6 +39,12 @@ function hasFrvrInit(
   return typeof frvr?.init === "function";
 }
 
+const hostname = location.hostname;
+const isMoomooIo = hostname.endsWith("moomoo.io");
+const isKrunkerIo = hostname.endsWith("krunker.io");
+const COOKIEPRO_KEY = isMoomooIo ? "c94e102c-455a-4bf1-82b7-8c7f938301b6" : "15b4472b-823a-468e-b5eb-6eeaca5d6de4";
+const TRACKER_CHANNEL = isKrunkerIo ? "krunker_io" : isMoomooIo ? "moomoo_io" : undefined;
+
 function configureLocalFrvrSdk(
   scope: FrvrWindow,
 ): FrvrRuntime & { init: (environment: string) => Promise<unknown> | unknown } {
@@ -49,6 +57,7 @@ function configureLocalFrvrSdk(
     frvr.config = {
       ...frvr.config,
       gameId: "moomoo",
+      consent: { providerName: "cookiepro", config: { websiteKey: COOKIEPRO_KEY } },
       ads: getFrvrAdsConfig(),
       tracker: {
         ...(typeof frvr.config?.tracker === "object" && frvr.config.tracker !== null
@@ -57,25 +66,51 @@ function configureLocalFrvrSdk(
         trackerChannelId: "moomoo_io",
       },
     };
+    if (hostname === "localhost") delete frvr.config.consent;
   }
   return frvr;
 }
 
+function applyEnvironmentHead(): void {
+  if (isExtension()) return;
+  const sandbox = isSandbox();
+  const ogImage = `https://${sandbox ? "sandbox." : ""}moomoo.io/img/og-image.jpg`;
+  document.querySelector('meta[name="robots"]')?.setAttribute("content", sandbox ? "noindex, nofollow" : "index, follow");
+  document.querySelector('meta[property="og:image"]')?.setAttribute("content", ogImage);
+  document.querySelector('meta[name="twitter:image"]')?.setAttribute("content", ogImage);
+
+  for (const script of document.querySelectorAll<HTMLScriptElement>('script[type="importmap"]')) {
+    try {
+      const map = JSON.parse(script.textContent ?? "");
+      if (typeof map?.imports?.["moomoo-protocol"] !== "string") continue;
+      map.imports["moomoo-protocol"] = sandbox ? "/p/s16o48.js" : "/p/s16o49.js";
+      script.textContent = JSON.stringify(map);
+    } catch {
+      // ignore malformed import maps
+    }
+  }
+}
+
+applyEnvironmentHead();
 installFrvrChannel();
 configureLocalFrvrSdk(window as FrvrWindow);
 
 async function initializeLocalFrvrSdk(scope: FrvrWindow): Promise<void> {
   const frvr = configureLocalFrvrSdk(scope);
-  if (!scope.frvrSdkInitPromise) {
-    scope.frvrSdkInitPromise =
-      frvr.initPromise ?? Promise.resolve(frvr.init("production")).then(() => undefined);
-  }
+  try {
+    if (!scope.frvrSdkInitPromise) {
+      scope.frvrSdkInitPromise =
+        frvr.initPromise ?? Promise.resolve(frvr.init("prod")).then(() => undefined);
+    }
 
-  frvr.tracker?.addExtraFieldFunction?.((fields) => {
-    fields.context = "moomoo";
-    fields.app_version = "1.9.2";
-    fields.channel = "moomoo_io";
-  });
+    frvr.tracker?.addExtraFieldFunction?.((fields) => {
+      fields.context = "moomoo";
+      fields.app_version = "1.9.3";
+      if (TRACKER_CHANNEL) fields.channel = TRACKER_CHANNEL;
+    });
+  } catch {
+    console.error("[FRVR] sdk failed init");
+  }
   await scope.frvrSdkInitPromise;
   if (!frvr.bootstrapper?.init) {
     throw new Error("The local FRVR channel bootstrapper is unavailable.");
@@ -110,7 +145,9 @@ export function installPageStubs(): void {
     levelEnd: noop,
     ...frvr.tracker,
   };
-  frvr.ads ??= { show: resolved };
+  frvr.ads ??= {
+    show: (_kind, done) => resolved().then(() => done?.()),
+  };
   frvr.profile ??= { name: () => "" };
   frvr.channelCharacteristics ??= { allowNavigation: true };
   frvr.bootstrapper = {

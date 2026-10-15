@@ -217,6 +217,7 @@ async function buildExtension() {
     ...shared,
     outfile: path.join(extensionDir, "bundle.js"),
     format: "iife",
+    define: { ...shared.define, "import.meta.url": '""' },
     sourcemap: false,
     minify: true,
   });

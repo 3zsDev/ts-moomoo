@@ -9,7 +9,7 @@ const NAME = /^[\w:()/? -]{1,15}$/;
 const HANDLE = /^[A-Za-z0-9_.\-@#]{1,32}$/;
 const SOCIALS = ["youtube", "twitch", "tiktok", "x", "discord"];
 const FRIEND_REQUESTS_PER_HOUR = 20;
-const DEFAULT_PREFS = { friendNotifs: true, friendRequests: true, clanInvites: true };
+const DEFAULT_PREFS = { friendNotifs: true, friendRequests: true, clanInvites: true, clanChat: true, whispers: true };
 const STAT_KEYS = [
   "kills", "deaths", "damage", "healing", "wood", "food", "stone", "gold",
   "animalKills", "animalDamage", "bestScore", "maxKills", "lives", "playtime",
@@ -213,7 +213,12 @@ export const accountRoutes = {
   "GET /profile": async (ctx, { query, ip }) => {
     if (!lookups.allow(ip)) return fail(429, "slow down");
     const user = ctx.store.userByName(query.get("name"));
-    if (user) return ok(profileView(ctx.store, user));
+    if (user) {
+      const view = profileView(ctx.store, user);
+      const where = ctx.presence.where(user.id);
+      if (where) view.online = { server: ctx.listKey(where) };
+      return ok(view);
+    }
     const live = await liveGet(`/profile?name=${encodeURIComponent(query.get("name") ?? "")}`);
     return live ? ok(live) : fail(404, "not found");
   },

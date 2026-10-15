@@ -1,38 +1,37 @@
+import { soundManager } from "../audio/sounds";
 import { config, endpoints } from "../config";
 import { isLocal, localSocketUrl, serverListUrl } from "../environment";
 import { connection } from "../net/Connection";
 import { createHandlers, markPingSent } from "../net/handlers";
-import { auth, joinTicket } from "../net/api";
+import { auth, isStaff, joinTicket } from "../net/api";
+import { allowGuestRejoin, guestRejoinAllowed } from "../net/api/join";
 import { trackGameStart } from "../net/api/auth";
-import { getCaptchaToken, resetTurnstile } from "../net/turnstile";
+import { takeCaptchaToken } from "../net/turnstile";
 import { BUILD_ID, ClientPacket, loadLiveProtocol, loadProtocol } from "../net/protocol";
-import { securityFlags, untrustedEventCount } from "../security";
-import { attack } from "../input/outbound";
+import { attack, forgetHeldKeys } from "../input/outbound";
 import { ServerBrowser } from "../net/ServerBrowser";
 import { clearTelegraphs } from "../render/layers/telegraphs";
-import { loadSetting, saveSetting } from "../utils/storage";
+import { saveSetting } from "../utils/storage";
 import { closeAlliance, refreshNotifications } from "../ui/alliance";
 import { joinAnonFlag, onGameSetup, onLeaveGame } from "../ui/anonMode";
 import { ui } from "../ui/elements";
 import { closeChat } from "../ui/hud";
-import { onGameStart, onPlayerDeath } from "../ui/lifecycle";
+import { onGameStart, onPlayerDeath, setPlaying } from "../ui/lifecycle";
 import { getPlayerName, handleDisconnect, hideMenu, saveName, selectedSkinColor, showMenuStatus } from "../ui/menu";
 import { closeStore } from "../ui/store";
 import { resetSession, state } from "./state";
-import { gameObjects } from "./world";
 
 export const serverBrowser = new ServerBrowser(endpoints.serverDomain);
 
 let joined = false;
 let pingTimer: ReturnType<typeof setTimeout> | undefined;
 let reachedServer = false;
-let telemetryStart: ReturnType<typeof setTimeout> | undefined;
-let telemetryTimer: ReturnType<typeof setInterval> | undefined;
 let retries = 0;
 const MAX_RETRIES = 2;
 
 function retryConnect(error: string): boolean {
-  if ((error !== "Socket error" && error !== "disconnected") || !auth.isVerified() || retries >= MAX_RETRIES) return false;
+  if ((error !== "Socket error" && error !== "disconnected") || retries >= MAX_RETRIES) return false;
+  if (!auth.isVerified() && !guestRejoinAllowed()) return false;
   retries++;
   connection.close();
   showMenuStatus("Connecting...");
@@ -48,18 +47,26 @@ function retryConnect(error: string): boolean {
   return true;
 }
 
-export const followBonus = loadSetting("moofoll");
-
 export function grantFollowBonus(): void {
+  if (state.followBonus) return;
+  state.followBonus = true;
   saveSetting("moofoll", "1");
 }
 
 export async function connectToServer(): Promise<void> {
+  const captcha = takeCaptchaToken();
+
   const address = serverBrowser.resolve((reason) => {
     console.error("Server error:", reason);
-    returnToMenu("disconnected");
+    returnToMenu(reason);
   });
   if (!address) return;
+
+  const server = serverBrowser.selected();
+  if (server && serverBrowser.isFull(server) && !isStaff()) {
+    returnToMenu("server is full");
+    return;
+  }
 
   let url = address.wsUrl ?? (isLocal() ? localSocketUrl(address.host, address.port) : `wss://${address.host}`);
   const live = Boolean(address.wsUrl && new URL(address.wsUrl).pathname === "/live");
@@ -72,7 +79,7 @@ export async function connectToServer(): Promise<void> {
   // 1.9 now requires token
   let token: string | null;
   try {
-    token = await joinTicket(address.host, getCaptchaToken(), live);
+    token = await joinTicket(address.host, captcha, live);
   } catch (error) {
     returnToMenu(error instanceof Error ? error.message : "disconnected");
     return;
@@ -113,43 +120,28 @@ export async function connectToServer(): Promise<void> {
 }
 
 export function joinGame(): void {
+  window.onbeforeunload = () => "Are you sure?";
+  trackGameStart();
+  saveName();
   if (joined || !connection.isReady()) return;
   joined = true;
 
-  trackGameStart();
-  saveName();
+  setPlaying(true, false);
+  soundManager.stop("menu");
   showMenuStatus("Loading...");
 
   connection.send(ClientPacket.JoinGame, {
     name: getPlayerName(),
-    moofoll: followBonus,
+    moofoll: state.followBonus,
     skin: selectedSkinColor,
     anon: joinAnonFlag(),
   });
 }
 
-function sendTelemetry(): void {
-  if (connection.isReady() && connection.isPinned()) {
-    connection.send(ClientPacket.Telemetry, securityFlags(), untrustedEventCount());
-  }
-}
-
-function startTelemetry(): void {
-  if (telemetryTimer) return;
-  telemetryStart = setTimeout(sendTelemetry, 5000);
-  telemetryTimer = setInterval(sendTelemetry, 60000);
-}
-
-function stopTelemetry(): void {
-  clearTimeout(telemetryStart);
-  clearInterval(telemetryTimer);
-  telemetryStart = telemetryTimer = undefined;
-}
-
 function onSetupGame(): void {
   attack.held = 0;
   attack.mouse = attack.key = false;
-  startTelemetry();
+  forgetHeldKeys();
   onGameSetup();
   hideMenu();
   ui.gameUI.style.display = "block";
@@ -187,6 +179,7 @@ function onDeath(): void {
 
 export function returnToMenu(reason: string): void {
   const reached = reachedServer;
+  allowGuestRejoin(reached);
   leaveSession();
   retries = 0;
   handleDisconnect(reason, reached);
@@ -196,13 +189,11 @@ export function leaveSession(): void {
   joined = false;
   reachedServer = false;
   onLeaveGame();
-  stopTelemetry();
   stopPingLoop();
   connection.close();
-  resetTurnstile();
   resetSession();
+  setPlaying(false, false);
   clearTelegraphs();
-  gameObjects.length = 0;
 }
 
 function startPingLoop(): void {

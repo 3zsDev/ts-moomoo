@@ -41,7 +41,6 @@ export const serverConfig = {
     { type: 10, count: 1, band: "snow" },     // yeti, one per server
   ] as Array<{ type: number; count: number; band: "any" | "snow" | "desert" | "grass" }>,
   turretProjectileSpeed: 1.5,
-  yetiRespawn: 60000,
   crabKingRespawn: 600000,
   statsInterval: 1000,
 };

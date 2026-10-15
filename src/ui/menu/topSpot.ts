@@ -6,6 +6,7 @@ import { openClanByName } from "../cards/clan";
 import { openProfile } from "../cards/profile";
 import { ui } from "../elements";
 import { isMenuVisible } from "./screens";
+import { refreshTopBoard } from "./topBoard";
 
 interface Spotlight {
   label: string;
@@ -16,6 +17,7 @@ interface Spotlight {
 }
 
 const ROTATE_INTERVAL = 5000;
+const SPOT_REFRESH = 60000;
 
 const SPANS: [TopSpan, string, string][] = [
   ["week", "Player of the week:", "Clan of the week:"],
@@ -25,6 +27,7 @@ const SPANS: [TopSpan, string, string][] = [
 
 let spots: Spotlight[] = [];
 let index = 0;
+let loadedAt = Date.now();
 
 function showNext(): void {
   const holder = ui.topSpot;
@@ -41,9 +44,7 @@ function showNext(): void {
   holder.onclick = spot.open;
 }
 
-export function initTopSpot(): void {
-  if (!leaderboardsEnabled()) return;
-
+function loadSpots(): void {
   Promise.all(SPANS.map(([span]) => fetchTop(span).catch(() => null))).then((boards) => {
     spots = [];
     boards.forEach((board, i) => {
@@ -61,8 +62,19 @@ export function initTopSpot(): void {
     });
     showNext();
   });
+}
+
+export function initTopSpot(): void {
+  if (!leaderboardsEnabled()) return;
+  loadSpots();
 
   setInterval(() => {
-    if (isMenuVisible() && spots.length > 1) showNext();
+    if (!isMenuVisible() || document.hidden) return;
+    if (spots.length > 1) showNext();
+    refreshTopBoard();
+    if (Date.now() - loadedAt > SPOT_REFRESH) {
+      loadedAt = Date.now();
+      loadSpots();
+    }
   }, ROTATE_INTERVAL);
 }

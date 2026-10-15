@@ -1,5 +1,5 @@
 import { isStaff, postWithAuth, type ClanRole, type StaffRole } from "./account";
-import { apiGet, apiGetJson } from "./http";
+import { apiGet } from "./http";
 
 export interface PeriodStats {
   kills?: number;
@@ -29,6 +29,7 @@ export interface Profile {
   playtime?: number;
   periods?: { day?: PeriodStats; week?: PeriodStats; month?: PeriodStats };
   socials?: Socials;
+  online?: { server?: string } | null;
 }
 
 export interface Socials {
@@ -67,6 +68,7 @@ export interface MyClanResponse {
   role?: ClanRole;
   invites: { clan: string; by: string }[];
   requests?: string[];
+  invited?: string[];
 }
 
 export interface TopPlayer {
@@ -97,7 +99,9 @@ export function fetchProfile(name: string): Promise<Profile | null> {
 }
 
 export function fetchClan(name: string): Promise<Clan | null> {
-  return apiGetJson<Clan>(`/clan?name=${encodeURIComponent(name)}`);
+  return apiGet(`/clan?name=${encodeURIComponent(name)}`).then((response) =>
+    response.ok ? (response.json() as Promise<Clan>) : null,
+  );
 }
 
 export function isClanNameReserved(name: string): Promise<boolean> {
@@ -106,7 +110,7 @@ export function isClanNameReserved(name: string): Promise<boolean> {
     .then((data: { reserved?: boolean }) => Boolean(data.reserved));
 }
 
-const TOP_CACHE_TIME = 60000;
+const TOP_CACHE_TIME = 4000;
 const topCache: Record<string, { at: number; board: Promise<TopBoard | null> }> = {};
 
 export function fetchTop(span: TopSpan): Promise<TopBoard | null> {

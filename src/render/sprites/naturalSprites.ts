@@ -1,6 +1,6 @@
 import { outlineWidth, paletteColors } from "../../config";
 import type { GameObject } from "../../entities/GameObject";
-import { randInt, TAU } from "../../utils/math";
+import { randFloat, randInt, TAU } from "../../utils/math";
 import { renderBlob, renderCircle, renderStar } from "../canvas/shapes";
 import { Biome, biomeAt } from "./biome";
 
@@ -19,13 +19,14 @@ export function getGameObjectSprite(obj: GameObject): HTMLCanvasElement {
   const ctx = canvas.getContext("2d")!;
   ctx.translate(canvas.width / 2, canvas.height / 2);
 
-  ctx.rotate(Math.random() * Math.PI);
+  ctx.rotate(randFloat(0, Math.PI));
   ctx.strokeStyle = paletteColors.outline;
   ctx.lineWidth = outlineWidth;
-  ctx.lineJoin = "round";
 
   switch (obj.type) {
     case 0:
+      // live only rounds the joins of trees; bushes and rocks keep the default miter
+      ctx.lineJoin = "round";
       renderTree(ctx, obj, biome);
       break;
     case 1:

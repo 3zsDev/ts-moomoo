@@ -5,12 +5,15 @@ import { fileURLToPath } from "node:url";
 
 import { signaturesChecked } from "./lib/auth.mjs";
 import { clientIp, internalHeaders, isInternal, readBody, sendJson } from "./lib/http.mjs";
+import { Presence } from "./lib/presence.mjs";
 import { Store } from "./lib/store.mjs";
+import { PageHub } from "./lib/stream.mjs";
 import { accountRoutes } from "./routes/accounts.mjs";
 import { clanRoutes } from "./routes/clans.mjs";
 import { discordRoutes } from "./routes/discord.mjs";
 import { gameRoutes } from "./routes/game.mjs";
 import { modRoutes } from "./routes/mod.mjs";
+import { openPageStream, presenceChanged, socialRoutes } from "./routes/social.mjs";
 import { topRoutes } from "./routes/top.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -64,9 +67,28 @@ function notifyServers(route, body) {
   }
 }
 
-const ctx = { store, servers, notifyServers };
+let bundle = process.env.API_BUNDLE || null;
 
-const routes = { ...gameRoutes, ...accountRoutes, ...clanRoutes, ...topRoutes, ...modRoutes, ...discordRoutes };
+const ctx = {
+  store,
+  servers,
+  notifyServers,
+  hub: new PageHub(),
+  presence: new Presence(HEARTBEAT_TIMEOUT, (id, server) => presenceChanged(ctx, id, server)),
+  listKey: (serverId) => {
+    if (!serverId) return "";
+    const entry = registry.find((item) => `${item.region}:${item.name}` === serverId);
+    return entry ? entry.key : `${serverId}:0`;
+  },
+  bundle: () => bundle,
+  setBundle: (name) => {
+    bundle = name;
+  },
+};
+
+const routes = {
+  ...gameRoutes, ...accountRoutes, ...clanRoutes, ...topRoutes, ...modRoutes, ...discordRoutes, ...socialRoutes,
+};
 
 function loadRegistry() {
   const raw = JSON.parse(readFileSync(path.join(root, "servers.json"), "utf8"));
@@ -90,13 +112,24 @@ function loadRegistry() {
 
 let registry = loadRegistry();
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, beat] of servers) {
+    if (beat.gone || now - beat.at <= HEARTBEAT_TIMEOUT) continue;
+    beat.gone = true;
+    ctx.hub.broadcast("count", { server: ctx.listKey(key), n: 0 });
+  }
+  ctx.presence.prune();
+}, 5000).unref();
+
 function serverList() {
   const now = Date.now();
 
   return registry.map((entry) => {
     const beat = servers.get(`${entry.region}:${entry.name}`);
     const alive = beat && now - beat.at <= HEARTBEAT_TIMEOUT;
-    return { ...entry, playerCount: alive ? beat.playerCount : 0 };
+    const restartAt = alive && beat.restartAt > now ? beat.restartAt : undefined;
+    return { ...entry, playerCount: alive ? beat.playerCount : 0, restartAt };
   });
 }
 
@@ -198,6 +231,11 @@ const server = createServer(async (req, res) => {
   if (pathname === "/ping") {
     res.writeHead(200, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
     res.end("pong");
+    return;
+  }
+
+  if (pathname === "/page/stream" && req.method === "GET") {
+    openPageStream(ctx, req, res, url, clientIp(req));
     return;
   }
 

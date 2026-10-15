@@ -26,13 +26,19 @@ is kept in your browser and only you see it.
 
 declare const __TEXTURES__: string[] | undefined;
 
-const TEXTURES =
+const LIVE_ONLY_TEXTURES = [
+  "hats/hat_0.png", "weapons/morningstar_1.png", "weapons/shotgun_1.png", "animals/duck_1.png",
+  "animals/fish_1.png", "animals/sid.png", "animals/vince.png", "icons/sword.png",
+];
+
+const shipped =
   typeof __TEXTURES__ !== "undefined"
     ? __TEXTURES__
-    : listAssetPaths()
-      .map((path) => path.replace(/^img\//, ""))
-      .filter((path) => SECTIONS.some(([folder]) => path.startsWith(`${folder}/`)))
-      .sort();
+    : listAssetPaths().map((path) => path.replace(/^img\//, ""));
+
+const TEXTURES = SECTIONS.flatMap(([folder]) =>
+  [...new Set([...shipped, ...LIVE_ONLY_TEXTURES])].filter((path) => path.startsWith(`${folder}/`)).sort(),
+);
 
 const replaced: Record<string, string> = {};
 let onTexturesChanged: () => void = () => {};

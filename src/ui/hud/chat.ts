@@ -7,7 +7,11 @@ import { closeAlliance } from "../alliance";
 import { ui } from "../elements";
 import { showServerNotice } from "../friends/notices";
 import { closeGameMenu } from "../gameMenu";
+import { runSlashCommand } from "../social/messages";
 import { closeStore } from "../store";
+
+const CHAT_LENGTH = 30;
+const COMMAND_LENGTH = 240;
 
 export function isChatOpen(): boolean {
   return ui.chatHolder.style.display === "block";
@@ -38,13 +42,36 @@ export function toggleChat(): void {
   clearHeldKeys();
 }
 
+// opens the chat box with text already in it: replies from chat toasts, and "/" in game
+export function openChatWith(prefix: string): void {
+  if (isUsingTouch()) {
+    setTimeout(() => {
+      const message = prompt("chat message", prefix);
+      if (message) sendChat(message);
+    }, 1);
+    return;
+  }
+
+  if (!isChatOpen()) toggleChat();
+  ui.chatBox.maxLength = COMMAND_LENGTH;
+  ui.chatBox.value = prefix;
+  ui.chatBox.focus();
+  ui.chatBox.setSelectionRange(prefix.length, prefix.length);
+}
+
+ui.chatBox.addEventListener("input", () => {
+  ui.chatBox.maxLength = ui.chatBox.value.startsWith("/") ? COMMAND_LENGTH : CHAT_LENGTH;
+});
+
 export function closeChat(): void {
+  ui.chatBox.maxLength = CHAT_LENGTH;
   ui.chatBox.value = "";
   ui.chatHolder.style.display = "none";
 }
 
 export function sendChat(message: string): void {
-  connection.send(ClientPacket.SendChat, message.slice(0, 30));
+  if (runSlashCommand(message)) return;
+  connection.send(ClientPacket.SendChat, message.slice(0, CHAT_LENGTH));
 }
 
 export function showChatBubble(sid: number, message: string): void {

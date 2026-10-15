@@ -3,6 +3,7 @@ import { hud } from "./hud";
 import { network } from "./network";
 import { animalTuning, player } from "./player";
 import { skinColors } from "./colors";
+import { privacy } from "./privacy";
 import { protocol } from "./protocol";
 import { upgrades } from "./upgrades";
 import { world, worldGen } from "./world";
@@ -22,6 +23,7 @@ export const config = {
   ...animalTuning,
   ...upgrades,
   ...protocol,
+  ...privacy,
 
   MAX_ATTACK: 0.6,
   MAX_SPAWN_DELAY: 1,

@@ -1,1 +1,1 @@
-export { serverShutdownNotice, setPingDisplay } from "./netStats";
+export { gameUpdatedNotice, serverShutdownNotice, setPingDisplay } from "./netStats";

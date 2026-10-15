@@ -26,7 +26,7 @@ export function installMouseHandlers(): void {
   }));
 
   window.addEventListener("mousedown", trusted((event: MouseEvent) => {
-    if (event.button !== 0 || !state.me?.alive) return;
+    if (!state.me?.alive) return;
     if (!hitTheWorld(event)) return;
     setUsingTouch(false);
     attack.mouse = true;
@@ -36,7 +36,6 @@ export function installMouseHandlers(): void {
   }));
 
   window.addEventListener("mouseup", trusted((event: MouseEvent) => {
-    if (event.button !== 0) return;
     setUsingTouch(false);
     if (event.buttons) return;
     attack.mouse = false;

@@ -2,6 +2,8 @@ import { serverBrowser } from "../../game/session";
 import { account, friends } from "../../net/api";
 import type { FriendInvite, IncomingRequest, PresenceNote } from "../../net/api/social";
 import { byId, createElement, removeAllChildren } from "../../utils/dom";
+import { isAlive } from "../netBridge";
+import { toastPrefs } from "../social/toasts";
 import { canJoinFriend, friendElsewhere, joinFriend, serverLabel } from "./friendList";
 
 const TOAST_TIME = 15000;
@@ -24,18 +26,20 @@ let invite: FriendInvite | null = null;
 
 export function showGameInvite(next: FriendInvite): void {
   if (!next.server || !account.prefs.friendNotifs) return;
+  if (isAlive() && !toastPrefs[next.as === "clan" ? "clan" : "whisper"]) return;
   invite = next;
   byId("inviteText").textContent = `${next.name} invited you to ${serverLabel(next.server, next.env)}`;
   banner.style.display = "block";
 }
 
-interface Note {
+export interface Note {
   text?: string;
   name?: string;
   kind?: PresenceNote["kind"];
   server: string | null;
   env?: string;
   notice?: boolean;
+  action?: [label: string, run: () => void];
 }
 
 const notes = byId("friendNotes");
@@ -76,11 +80,24 @@ function nextNote(): void {
     });
   }
 
-  const time = note.notice ? 15000 : queue.length ? 3000 : joinable ? 12000 : 5000;
+  const action = note.action;
+  if (action) {
+    createElement({
+      tag: "a",
+      text: action[0],
+      parent: line,
+      onclick: () => {
+        nextNote();
+        action[1]();
+      },
+    });
+  }
+
+  const time = note.notice ? 15000 : queue.length ? 3000 : joinable || action ? 12000 : 5000;
   noteTimer = setTimeout(nextNote, time);
 }
 
-function pushNote(note: Note): void {
+export function pushNote(note: Note): void {
   queue.push(note);
   const showing = notes.firstChild as HTMLElement | null;
   if (!showing) {
@@ -91,9 +108,12 @@ function pushNote(note: Note): void {
   }
 }
 
+export function showFriendNote(note: Note): void {
+  if (account.prefs.friendNotifs) pushNote(note);
+}
+
 export function showPresenceNote(note: PresenceNote): void {
-  if (!account.prefs.friendNotifs) return;
-  pushNote({ name: note.name, kind: note.kind, server: note.server, env: note.env });
+  showFriendNote({ name: note.name, kind: note.kind, server: note.server, env: note.env });
 }
 
 export function showServerNotice(text: string): void {

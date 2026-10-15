@@ -99,6 +99,22 @@ export async function reportPlayer(
   return result?.verdict ?? null;
 }
 
+export function reportChat(line: ReportTarget & { text: string; shadow?: boolean }): void {
+  void call("POST", "/internal/chat", {
+    server: serverKey, account: line.account, did: line.did, name: line.name, text: line.text, shadow: Boolean(line.shadow),
+  });
+}
+
+export type GameEvent = { kind: "boss"; by: string } | { kind: "clan_top"; clan: string };
+
+export function reportEvent(event: GameEvent): void {
+  void call("POST", "/internal/event", { ...event, server: serverKey });
+}
+
+export function reportFlags(target: ReportTarget, counts: Record<string, number>): void {
+  void call("POST", "/internal/flags", { target, counts, server: serverKey });
+}
+
 export async function fetchProfile(name: string): Promise<Record<string, unknown> | null> {
   return call("GET", `/profile?name=${encodeURIComponent(name)}`);
 }

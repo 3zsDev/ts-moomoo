@@ -22,7 +22,7 @@ export function showMenuStatus(message: string, offerReload = false): void {
   ui.diedText.style.display = "none";
   ui.loadingText.style.display = "block";
   ui.loadingText.innerHTML = offerReload
-    ? `${message} <a href='javascript:window.location.href=window.location.href' class='ytLink'>reload</a>`
+    ? `${message} <a href='javascript:void(window.location.reload())' class='ytLink'>reload</a>`
     : message;
 }
 

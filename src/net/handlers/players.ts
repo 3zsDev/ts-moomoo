@@ -13,7 +13,7 @@ import { spawned } from "./session";
 export function addPlayer(data: PlayerInitData, isYou: boolean): void {
   const player = getOrCreatePlayer(data[0], data[1]);
 
-  player.spawn(isYou);
+  player.spawn(isYou && Boolean(state.followBonus));
   player.visible = false;
   player.x2 = undefined;
   player.y2 = undefined;

@@ -7,6 +7,8 @@ import { grid } from "../../render/layers/ground";
 import { loadBool, saveBool, saveSetting } from "../../utils/storage";
 import { ui } from "../elements";
 import { setNetStatsOptions } from "../hud/netStats";
+import { pageStream } from "../social/pageStream";
+import { bindToastPrefs } from "../social/toasts";
 import { refreshSocialNote } from "./settingsPopup";
 
 export let showPing = false;
@@ -68,7 +70,8 @@ export function bindSettingToggles(): void {
   };
 }
 
-const PREF_TOGGLES: Record<keyof AccountPrefs, string> = {
+// clan chat and whispers have no toggle yet (always on)
+const PREF_TOGGLES: Partial<Record<keyof AccountPrefs, string>> = {
   friendNotifs: "prefFriendNotifs",
   friendRequests: "prefFriendRequests",
   clanInvites: "prefClanInvites",
@@ -78,7 +81,7 @@ function showAccountPrefs(): void {
   byId("accountPrefs").style.display = !isSandbox() && account.name ? "" : "none";
   refreshSocialNote();
   for (const [key, id] of Object.entries(PREF_TOGGLES)) {
-    byId<HTMLInputElement>(id, "input").checked = account.prefs[key as keyof AccountPrefs];
+    byId<HTMLInputElement>(id!, "input").checked = account.prefs[key as keyof AccountPrefs];
   }
 }
 
@@ -93,9 +96,14 @@ export function bindAccountPrefs(): void {
       prefs[key] = toggle.checked;
       if (!prefs.friendNotifs || !prefs.friendRequests) byId("friendToast").style.display = "none";
       if (!prefs.friendNotifs) byId("inviteBanner").style.display = "none";
-      savePref(key, toggle.checked).catch(() => {});
+      savePref(key, toggle.checked)
+        .then(() => {
+          if (key === "clanChat" || key === "whispers") pageStream.restart();
+        })
+        .catch(() => {});
     };
   }
+  bindToastPrefs();
 }
 
 export function saveName(): void {

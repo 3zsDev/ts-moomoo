@@ -1,5 +1,6 @@
 import { config } from "../config";
 import type { Player } from "../entities/Player";
+import { loadSetting } from "../utils/storage";
 
 export interface Alliance {
   sid: string;
@@ -22,7 +23,9 @@ export const state = {
 
   staff: false,
   inGame: false,
+  playing: false,
   firstLoad: true,
+  followBonus: loadSetting("moofoll") as string | boolean | null,
 
   delta: 0,
   now: Date.now(),
@@ -54,7 +57,9 @@ export const state = {
 
 export function resetSession(): void {
   state.me = null;
+  state.firstLoad = true;
   state.inGame = false;
+  state.playing = false;
   state.alliances = [];
   state.allianceMembers = [];
   state.joinRequests = [];

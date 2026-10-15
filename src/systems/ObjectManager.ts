@@ -3,7 +3,7 @@ import type { Item } from "../data/items";
 import { GameObject, type GameObjectOwner } from "../entities/GameObject";
 import type { Damageable, ServerHooks } from "../entities/types";
 import { getDirection, getDistance } from "../utils/geometry";
-import { randInt } from "../utils/math";
+import { fixTo, randInt } from "../utils/math";
 import { CollisionGrid } from "./CollisionGrid";
 
 export interface Collider extends Damageable {
@@ -122,7 +122,7 @@ export class ObjectManager {
       if (!player.active) continue;
       if (obj.sentTo[player.sid]) {
         if (obj.active) {
-          if (player.canSee?.(obj)) this.server.send(player.sid, "L", dir, obj.sid);
+          if (player.canSee?.(obj)) this.server.send(player.sid, "L", fixTo(dir, 1), obj.sid);
         } else {
           this.server.send(player.sid, "Q", obj.sid);
         }

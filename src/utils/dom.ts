@@ -17,6 +17,8 @@ const RESERVED_KEYS = new Set([
   "tag", "text", "html", "class", "style", "hookTouch", "parent", "children",
 ]);
 
+const TRUSTED_HANDLERS = new Set(["onclick", "onmouseover", "onmouseout"]);
+
 export function createElement(spec: ElementSpec): HTMLElement {
   const el = document.createElement(spec.tag || "div");
 
@@ -28,7 +30,7 @@ export function createElement(spec: ElementSpec): HTMLElement {
     if (RESERVED_KEYS.has(key)) continue;
     const value = spec[key];
     (el as unknown as Record<string, unknown>)[key] =
-      key === "onclick" && typeof value === "function" ? trusted(value as (event: Event) => void) : value;
+      TRUSTED_HANDLERS.has(key) && typeof value === "function" ? trusted(value as (event: Event) => void) : value;
   }
 
   if (spec.style) el.style.cssText = spec.style;
@@ -78,6 +80,7 @@ export function hookTouchEvents(el: HTMLElement, skipPreventDefault = false): vo
 
   const start = (event: TouchEvent) => {
     mousifyTouchEvent(event);
+    window.setUsingTouch?.(true);
     if (shouldPreventDefault) {
       event.preventDefault();
       event.stopPropagation();
@@ -88,6 +91,7 @@ export function hookTouchEvents(el: HTMLElement, skipPreventDefault = false): vo
 
   const move = (event: TouchEvent) => {
     mousifyTouchEvent(event);
+    window.setUsingTouch?.(true);
     if (shouldPreventDefault) {
       event.preventDefault();
       event.stopPropagation();
@@ -105,6 +109,7 @@ export function hookTouchEvents(el: HTMLElement, skipPreventDefault = false): vo
 
   const end = (event: TouchEvent) => {
     mousifyTouchEvent(event);
+    window.setUsingTouch?.(true);
     if (shouldPreventDefault) {
       event.preventDefault();
       event.stopPropagation();

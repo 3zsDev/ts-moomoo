@@ -21,7 +21,8 @@ const localSite = JSON.stringify({
 }).replace(/[<>]/g, "");
 const INJECT_HEAD = serverConfig.wsOnly ? "" : `<script>window.__MOOMOO_LOCAL__=${localSite};</script>`;
 
-const API_ROUTE = /^\/(join|account|account\/socials|account\/prefs|account\/look|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow|discord\/link)$/;
+const API_ROUTE = /^\/(join|account|account\/socials|account\/prefs|account\/look|name|name-check|profile|clan|clan-check|clan\/[a-z]+|top|mod\/[a-z]+|names-for|friends\/allow|discord\/link|page\/ticket|page\/friends|invite|chat\/[a-z]+|top-now)$/;
+const API_STREAM = "/page/stream";
 const MODERATION_ACTIONS = new Set(["kick", "ban", "shadow", "clear"]);
 
 function selfServerList(): unknown[] {
@@ -36,6 +37,7 @@ function selfServerList(): unknown[] {
     isPrivate: false,
     sandbox: serverConfig.sandbox,
     auth: serverConfig.membersOnly || undefined,
+    restartAt: restartAt ?? undefined,
   };
 
   return [{
@@ -103,6 +105,37 @@ async function proxyToApi(req: IncomingMessage, res: ServerResponse, url: string
     res.end(text);
   } catch {
     sendJson(res, { error: "unavailable" }, 503);
+  }
+}
+
+async function proxyStream(req: IncomingMessage, res: ServerResponse, url: string): Promise<void> {
+  const upstream = new AbortController();
+  res.on("close", () => upstream.abort());
+  try {
+    const response = await fetch(`${serverConfig.apiUrl}${url}`, {
+      headers: { ...internalHeaders(), accept: "text/event-stream", "x-forwarded-for": remoteAddress(req) },
+      signal: upstream.signal,
+    });
+    res.writeHead(response.status, {
+      "Content-Type": response.headers.get("content-type") ?? "text/event-stream",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders();
+    if (!response.body) {
+      res.end();
+      return;
+    }
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done || res.writableEnded) break;
+      res.write(value);
+    }
+    res.end();
+  } catch {
+    if (!res.headersSent) sendJson(res, { error: "unavailable" }, 503);
+    else res.end();
   }
 }
 
@@ -194,12 +227,13 @@ const http = createServer((req, res) => {
     return;
   }
 
-  if (API_ROUTE.test(path)) {
+  if (API_ROUTE.test(path) || (path === API_STREAM && req.method === "GET")) {
     if (!serverConfig.apiEnabled) {
       sendJson(res, { error: "unavailable" }, 503);
       return;
     }
-    void proxyToApi(req, res, req.url ?? path);
+    if (path === API_STREAM) void proxyStream(req, res, req.url ?? path);
+    else void proxyToApi(req, res, req.url ?? path);
     return;
   }
 
@@ -289,6 +323,8 @@ async function heartbeat(): Promise<void> {
         playerCount: game.playerCount,
         port: serverConfig.port,
         sandbox: serverConfig.sandbox,
+        restartAt: restartAt ?? undefined,
+        players: game.onlinePlayers(),
       }),
       signal: AbortSignal.timeout(3000),
     });
@@ -314,20 +350,23 @@ const beatTimer = setInterval(() => void heartbeat(), serverConfig.heartbeatInte
 const reservedTimer = setInterval(() => void refreshReserved(), serverConfig.reservedRefresh);
 
 let shuttingDown = false;
+let restartAt: number | null = null;
 
 async function shutdown(seconds: number): Promise<void> {
   if (shuttingDown) {
     process.exit(0);
   }
   shuttingDown = true;
-  clearInterval(beatTimer);
   clearInterval(reservedTimer);
+  restartAt = Date.now() + Math.max(0, Math.round(seconds)) * 1000;
+  void heartbeat();
 
   for (let left = Math.round(seconds); left > 0 && game.humanCount() > 0; left--) {
     game.shutdownNotice(left);
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
+  clearInterval(beatTimer);
   game.kickAll("Server is restarting - pick another");
   game.stop();
   http.close(() => process.exit(0));

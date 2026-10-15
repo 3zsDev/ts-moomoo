@@ -2,6 +2,7 @@ import { ok } from "../lib/http.mjs";
 import { liveGet, livePost } from "../lib/mirror.mjs";
 import { read } from "../lib/periods.mjs";
 import { isStaff, signedIn } from "./accounts.mjs";
+import { verdictOf } from "./mod.mjs";
 
 const SIZE = 10;
 const SPANS = new Set(["week", "month", "all"]);
@@ -13,8 +14,9 @@ function killsIn(record, span) {
 function board(store, span, staff) {
   const players = [];
   for (const user of Object.values(store.users)) {
-    if (!user.name || user.verdict?.level === "ban") continue;
-    const shadowed = user.verdict?.level === "shadow";
+    const level = verdictOf(user)?.level;
+    if (!user.name || level === "ban") continue;
+    const shadowed = level === "shadow";
     if (shadowed && !staff) continue;
 
     const kills = span === "all" ? user.stats.kills : read(user.periods, span).kills ?? 0;

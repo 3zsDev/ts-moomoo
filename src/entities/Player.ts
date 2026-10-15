@@ -435,7 +435,7 @@ export class Player implements Damageable, Interpolated {
 
     if (weapon.gather != null) {
       this.gather();
-    } else if (weapon.projectile != null && this.canAfford(weapon, this.skin?.projCost)) {
+    } else if (weapon.projectile != null && this.hasRes(weapon, this.skin?.projCost)) {
       this.shoot(weapon.projectile);
     } else {
       didAct = false;

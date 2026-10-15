@@ -1,6 +1,7 @@
 import { leaderboardsEnabled } from "../../environment";
+import { serverBrowser } from "../../game/session";
 import {
-  clearTopCache, fetchTop, isStaff, postWithAuth,
+  apiGet, clearTopCache, fetchTop, isStaff, postWithAuth,
   type TopBoard, type TopClan, type TopPlayer, type TopSpan,
 } from "../../net/api";
 import { byId, createElement, hookTouchEvents, removeAllChildren } from "../../utils/dom";
@@ -9,16 +10,25 @@ import { confirmAction } from "../cards/confirm";
 import { openClanByName } from "../cards/clan";
 import { openProfile } from "../cards/profile";
 import { ui } from "../elements";
+import { serverLabel } from "../friends/friendList";
 import { onViewShown, showView } from "./views";
 
-const SPANS: [TopSpan, string][] = [["week", "This week"], ["month", "This month"], ["all", "All time"]];
+type BoardSpan = TopSpan | "now";
+
+interface NowPlayer {
+  name: string;
+  score: number;
+  server?: string;
+}
+
+const SPANS: [BoardSpan, string][] = [["week", "This week"], ["month", "This month"], ["all", "All time"], ["now", "Right now"]];
 const ROWS = 10;
 
-let span: TopSpan = "week";
+let span: BoardSpan = "week";
 
 function row(
   column: HTMLElement, rank: number, entry: TopPlayer | TopClan, onOpen: () => void,
-  onShadow: ((shadow: boolean) => void) | null,
+  onShadow: ((shadow: boolean) => void) | null, note = "",
 ): HTMLElement {
   const el = createElement({ class: "topPlayer" + (entry.shadowed ? " shadowed" : ""), parent: column, onclick: onOpen });
   const name = createElement({ tag: "span", class: "topName", text: `${rank}. `, parent: el });
@@ -34,6 +44,7 @@ function row(
     });
   }
   createElement({ tag: "span", class: "topPlayerName", text: entry.name, parent: name });
+  if (note) createElement({ tag: "span", class: "topNote", text: note, parent: name });
   createElement({ tag: "span", class: "topKills", text: kFormat(entry.kills) || "0", parent: el });
 
   if (onShadow) {
@@ -108,7 +119,48 @@ function render(board: TopBoard | null): void {
   });
 }
 
-export function loadTopBoard(next: TopSpan): void {
+function renderNow(players: NowPlayer[]): void {
+  const holder = byId("topBoard");
+  removeAllChildren(holder);
+  const column = createElement({ class: "topColumn", parent: holder });
+  createElement({ class: "topTitle", text: "In a game now - score", parent: column });
+  for (let i = 0; i < ROWS; i++) {
+    const player = Array.isArray(players) ? players[i] : undefined;
+    if (!player) {
+      createElement({
+        class: "topPlayer blank",
+        parent: column,
+        children: [createElement({ tag: "span", class: "topName", text: `${i + 1}.` })],
+      });
+      continue;
+    }
+    const key = player.server ? serverBrowser.keyOf(player.server) : "";
+    row(column, i + 1, { name: player.name, kills: player.score }, () => openProfile(player.name), null,
+      key ? ` - ${serverLabel(key)}` : "");
+  }
+}
+
+function fetchBoard(next: BoardSpan): void {
+  if (next === "now") {
+    apiGet("/top-now")
+      .then((response) => (response.ok ? (response.json() as Promise<NowPlayer[]>) : []))
+      .catch((): NowPlayer[] => [])
+      .then((players) => {
+        if (span === next) renderNow(players);
+      });
+    return;
+  }
+
+  fetchTop(next)
+    .then((board) => {
+      if (span === next) render(board ?? { players: [], clans: [] });
+    })
+    .catch(() => {
+      if (span === next) render({ players: [], clans: [] });
+    });
+}
+
+export function loadTopBoard(next: BoardSpan): void {
   span = next;
   const tabs = byId("topTabs");
   removeAllChildren(tabs);
@@ -120,13 +172,13 @@ export function loadTopBoard(next: TopSpan): void {
   }
 
   render(null);
-  fetchTop(next)
-    .then((board) => {
-      if (span === next) render(board ?? { players: [], clans: [] });
-    })
-    .catch(() => {
-      if (span === next) render({ players: [], clans: [] });
-    });
+  fetchBoard(next);
+}
+
+// 1.9.3: the open board refreshes in place while it is on screen
+export function refreshTopBoard(): void {
+  const tabs = document.getElementById("topTabs");
+  if (tabs?.offsetParent) fetchBoard(span);
 }
 
 export function bindTopBoard(): void {

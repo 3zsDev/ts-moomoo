@@ -1,10 +1,16 @@
 import { isDev, isSandbox, socialEnabled } from "../../environment";
+import { serverBrowser } from "../../game/session";
+import { state } from "../../game/state";
 import { account, authedPost, fetchProfile, friends, isStaff, postWithAuth, type Profile, type Socials } from "../../net/api";
 import { byId, createElement, removeAllChildren } from "../../utils/dom";
 import { kFormat } from "../../utils/math";
+import { joinFriendServer, serverLabel } from "../friends/friendList";
+import { connectedServerKey } from "../menu/playButtons";
 import { openSettingsPopup } from "../menu/settingsPopup";
 import { currentView } from "../menu/views";
+import { connection } from "../../net/Connection";
 import { awaitPlayerProfile } from "../../net/handlers/staff";
+import { trusted } from "../../security/trusted";
 import { isConnected, mySid, onPlayerStats, requestPlayerStats } from "../netBridge";
 import { closeClanCard, openClanByName } from "./clan";
 import { copyLinkButton } from "./shareLink";
@@ -39,7 +45,10 @@ interface LiveStats {
   score: number;
 }
 
-let shown: Profile | null = null;
+// 1.9.3: the API says when a signed-in player is in a game right now
+type ShownProfile = Profile & { online?: { server?: string } | null };
+
+let shown: ShownProfile | null = null;
 let liveSid = -1;
 let live: LiveStats | null = null;
 let awaitingGuestId = false;
@@ -64,6 +73,11 @@ function subscribeLive(sid: number): void {
   liveSid = sid;
   live = null;
   if (isConnected()) requestPlayerStats(sid);
+}
+
+export function resetLiveStats(): void {
+  liveSid = -1;
+  live = null;
 }
 
 function liveValue(key: keyof LiveStats): number {
@@ -340,7 +354,7 @@ function resetCard(name: string): void {
   card.root.style.display = "block";
 }
 
-function fillProfile(profile: Profile): void {
+function fillProfile(profile: ShownProfile): void {
   card.root.classList.remove("loading");
   shown = profile;
   card.name.textContent = profile.name;
@@ -349,10 +363,10 @@ function fillProfile(profile: Profile): void {
   const clan = profile.clan;
   card.clan.textContent = clan ? `[${clan.name}]` : "";
   card.clan.onclick = clan
-    ? () => {
+    ? trusted(() => {
         closeProfile();
         openClanByName(clan.name);
-      }
+      })
     : null;
 
   renderStats(profile);
@@ -399,6 +413,24 @@ function fillProfile(profile: Profile): void {
     });
   }
 
+  if (profile.online?.server && !own) {
+    const key = serverBrowser.keyOf(profile.online.server);
+    const row = createElement({ class: "profileOnline", parent: card.actions });
+    createElement({ class: "friendDot online", parent: row });
+    createElement({ tag: "span", text: "In game now" + (key ? ` on ${serverLabel(key)}` : ""), parent: row });
+    if (key && !(isConnected() && key === connectedServerKey())) {
+      createElement({
+        class: "friendAction go",
+        text: "Join",
+        parent: row,
+        onclick: () => {
+          closeProfile();
+          joinFriendServer(key);
+        },
+      });
+    }
+  }
+
   if (!profile.anon) copyLinkButton(card.actions, `/player/${encodeURIComponent(profile.name)}`, card.status);
   if (isStaff() && !own && !profile.anon) {
     renderStaffPanel(card.actions, card.status, { name: profile.name, role: profile.role ?? undefined });
@@ -410,10 +442,11 @@ export function openProfile(name: string): void {
   shown = null;
   resetCard(name);
 
-  const sid = name === account.name ? mySid() : knownSids[name];
+  const own = name === account.name && state.playing ? mySid() : null;
+  const sid = own ?? knownSids[name];
   subscribeLive(sid == null ? -1 : sid);
 
-  const lookup = sid != null && isConnected()
+  const lookup = sid != null && state.playing && isConnected() && connection.isPinned()
     ? awaitPlayerProfile<Profile>(sid, () => (/^Anon#/.test(name) ? Promise.resolve(null) : fetchProfile(name)))
     : fetchProfile(name);
   lookup
@@ -441,6 +474,16 @@ export function openGuestProfile(sid: number, name: string): void {
   awaitingGuestId = true;
   subscribeLive(sid);
   renderStats(shown);
+}
+
+export function openGuestRecord(id: string, name: string): void {
+  shown = { name, guest: true };
+  resetCard(name);
+  card.role.textContent = "Guest";
+  card.status.textContent = "";
+  card.root.classList.remove("loading");
+  subscribeLive(-1);
+  renderStaffPanel(card.actions, card.status, { id });
 }
 
 export function closeProfile(): void {
@@ -493,7 +536,7 @@ export function receivePlayerStats(
 }
 
 export function bindProfileCard(): void {
-  card.close.onclick = closeProfile;
+  card.close.onclick = trusted(closeProfile);
   onPlayerStats((stats) => {
     receivePlayerStats(
       stats.sid, stats.kills, stats.wood, stats.food, stats.stone, stats.gold, stats.damage, stats.animalDamage,

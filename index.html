@@ -4,7 +4,7 @@
         <script type="importmap">
             {
                 "imports": {
-                    "moomoo-protocol": "/p/s16nz1.js"
+                    "moomoo-protocol": "/p/s16o49.js"
                 }
             }</script>
         <meta charset="UTF-8">
@@ -12,7 +12,7 @@
         <title>MooMoo.io - Free Multiplayer Survival IO Game</title>
         <meta name="description" content="Play MooMoo.io, a free multiplayer survival .io game. Gather resources, build your village, craft weapons and defend your windmills against players from around the world.">
         <meta name="keywords" content="moomoo, moomoo.io, io game, survival game, multiplayer, online game, village, farm, build, browser game, free game">
-        <meta name="robots" content="noindex, nofollow">
+        <meta name="robots" content="index, follow">
         <meta name="theme-color" content="#3367D6">
         <link rel="canonical" href="https://moomoo.io/">
         <meta property="og:type" content="website">
@@ -20,7 +20,7 @@
         <meta property="og:title" content="MooMoo.io - Free Multiplayer Survival IO Game">
         <meta property="og:description" content="Gather resources, build your village, craft weapons and defend your windmills against players from around the world. Play MooMoo.io free in your browser.">
         <meta property="og:url" content="https://moomoo.io/">
-        <meta property="og:image" content="https://sandbox.moomoo.io/img/og-image.jpg">
+        <meta property="og:image" content="https://moomoo.io/img/og-image.jpg">
         <meta property="og:image:width" content="1200">
         <meta property="og:image:height" content="630">
         <meta property="og:image:alt" content="MooMoo.io - Gather. Build. Survive.">
@@ -29,7 +29,7 @@
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:title" content="MooMoo.io - Free Multiplayer Survival IO Game">
         <meta name="twitter:description" content="Gather resources, build your village, craft weapons and defend your windmills against players from around the world. Play MooMoo.io free in your browser.">
-        <meta name="twitter:image" content="https://sandbox.moomoo.io/img/og-image.jpg">
+        <meta name="twitter:image" content="https://moomoo.io/img/og-image.jpg">
         <meta name="twitter:image:alt" content="MooMoo.io - Gather. Build. Survive.">
         <link rel="manifest" href="./manifest.json">
         <link rel="shortcut icon" type="image/png" href="./img/favicon.png?v=2"/>
@@ -84,12 +84,8 @@
         <link rel="stylesheet" href="css/main.css?52"/>
         <link href="./css/material-icons.css?4" rel="stylesheet">
         <link href="./css/hammersmith-one.css?3" rel="stylesheet">
-        <script type="module" crossorigin src="./assets/index-12d386a8.js"></script>
-        <link rel="modulepreload" crossorigin href="./assets/vendor-a3a301f0.js">
     </head>
     <body>
-        <script src="./libs/frvr-sdk.min.js?4"></script>
-        <script src="./libs/frvr-channel-web.min.js?4"></script>
         <script>
             if (window.FRVR) window.FRVR.config = {
                 "gameId": "moomoo",
@@ -134,7 +130,7 @@
                 window.FRVR.init('prod');
                 window.FRVR.tracker.addExtraFieldFunction(function(fields) {
                     fields.context = 'moomoo';
-                    fields.app_version = '1.9.2';
+                    fields.app_version = '1.9.3';
                     if (isKrunkerIo) {
                         fields.channel = 'krunker_io';
                     } else if (isMoomooIo) {
@@ -145,7 +141,6 @@
                 console.error('[FRVR] sdk failed init');
             }
         </script>
-        <script defer="defer" src="./libs/howler.core.min.js?2"></script>
         <div id="pre-content-container" style="display:none"></div>
         <div id="errorNotification" class="menuCard" style="display:none">
             <div>
@@ -157,6 +152,10 @@
             </div>
         </div>
         <div id="shutdownDisplay" hidden></div>
+        <div id="pageNotices">
+            <div id="noticeDisplay" hidden></div>
+            <div id="updateNotice" hidden>Update available - <a href="javascript:void(window.location.reload())">reload</a></div>
+        </div>
         <div id="mainMenu">
             <div id="menuContainer">
                 <div id="gameName" aria-label="MOOMOO.io"><span style="--i:0">M</span><span style="--i:1">O</span><span style="--i:2">O</span><span style="--i:3">M</span><span style="--i:4">O</span><span style="--i:5">O</span><span style="--i:6">.</span><span style="--i:7">i</span><span style="--i:8">o</span></div>
@@ -359,7 +358,7 @@
             </div>
             <div id="topSpot" style="display:none"></div>
             <div id="linksContainer2">
-                <a href="./docs/versions.txt" target="_blank" class="menuLink" draggable="false">v1.9.2</a>
+                <a href="./docs/versions.txt" target="_blank" class="menuLink" draggable="false">v1.9.3</a>
                 | <a href="https://discord.gg/MqpUzka" target="_blank" class="menuLink" draggable="false">Discord</a>
                 | <a href="https://frvr.com/legal#TermsofService" target="_blank" class="menuLink" draggable="false">Terms</a>
                 | <a href="https://frvr.com/legal#PrivacyPolicy" target="_blank" class="menuLink" draggable="false">Privacy</a>
@@ -402,6 +401,12 @@
                         </div>
                         <div class="settingRadio">
                             <input id="prefClanInvites" type="checkbox"/>Allow Clan Invitations
+                        </div>
+                        <div class="settingRadio" title="Reply from the game's chat with /w name message, or /r message">
+                            <input id="prefToastWhispers" type="checkbox"/>Show Friend Messages In Game
+                        </div>
+                        <div class="settingRadio" title="Reply from the game's chat with /c message">
+                            <input id="prefToastClan" type="checkbox"/>Show Clan Messages In Game
                         </div>
                         <div class="settingRadio" title="Other players see Anon#number for your name, and no clan. You still see your own.">
                             <input id="prefAnon" type="checkbox"/>Anonymous Mode
@@ -461,6 +466,13 @@
                 <i class="material-icons">&#xE5CD;</i>
             </div>
         </div>
+        <div id="whisperCard" class="menuCard" style="display:none">
+            <div class="menuHeader" id="whisperName"></div>
+            <div id="whisperBody"></div>
+            <div id="whisperClose" class="cardClose" title="Close">
+                <i class="material-icons">&#xE5CD;</i>
+            </div>
+        </div>
         <div id="friendNotes"></div>
         <div id="confirmCard" style="display:none">
             <div id="confirmText"></div>
@@ -506,6 +518,7 @@
             </div>
         </div>
         <div id="gameUI" style="display:none">
+            <div id="chatToasts"></div>
             <div id="chatHolder" style="display:none">
                 <input id="chatBox" placeholder="Enter Message" maxlength="30">
             </div>

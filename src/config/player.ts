@@ -7,6 +7,6 @@ export const player = {
 };
 
 export const animalTuning = {
-  animalCount: 7,
+  animalCount: 8,
   aiTurnRandom: 0.06,
 };

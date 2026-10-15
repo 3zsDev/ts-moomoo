@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const EMPTY = () => ({ version: 1, users: {}, guests: {}, clans: {}, ipBans: {}, locks: {} });
+const EMPTY = () => ({
+  version: 1, users: {}, guests: {}, clans: {}, ipBans: {}, locks: {},
+  chat: { clan: {}, whisper: {} }, notice: null,
+});
 
 export class Store {
   constructor(file) {
@@ -38,6 +41,7 @@ export class Store {
   get clans() { return this.data.clans; }
   get ipBans() { return this.data.ipBans; }
   get locks() { return this.data.locks; }
+  get chat() { return this.data.chat; }
 
   lockedFor(keys) {
     const now = Date.now();
@@ -92,6 +96,6 @@ export function newUser(id, email) {
     id, email: email ?? null, name: null, role: null, created: Date.now(),
     clan: null, invites: [], socials: {}, verdict: null, session: null, reports: [],
     stats: emptyStats(), periods: {}, friendRequests: [],
-    prefs: { friendNotifs: true, friendRequests: true, clanInvites: true },
+    prefs: { friendNotifs: true, friendRequests: true, clanInvites: true, clanChat: true, whispers: true },
   };
 }

@@ -1,5 +1,6 @@
 import { auth } from "../../net/api";
 import type { AuthError, CodeSession } from "../../net/api/auth";
+import { trusted } from "../../security/trusted";
 import { byId, createElement, hookTouchEvents, removeAllChildren } from "../../utils/dom";
 import { ui } from "../elements";
 
@@ -38,12 +39,12 @@ function setLink(el: HTMLElement, text: string, action: (() => void) | null): vo
   el.style.display = text ? "" : "none";
   el.className = action ? "" : "disabled";
   el.onclick = action
-    ? () => {
+    ? trusted(() => {
         if (busy) return;
         action();
         setStatus("");
         render();
-      }
+      })
     : null;
 }
 
@@ -231,9 +232,8 @@ function renderPlayAccount(): void {
   const label = ui.enterGameButton.getElementsByTagName("span")[0];
   if (label) label.textContent = signedIn ? "Enter Game" : "Play as Guest";
 
-  const canSignIn = auth.signInAvailable();
-  setShown(ui.signInButton, !signedIn && canSignIn);
-  setShown(ui.signInHint, !signedIn && canSignIn);
+  setShown(ui.signInButton, !signedIn);
+  setShown(ui.signInHint, !signedIn);
   setShown(ui.accountRow, signedIn);
 
   removeAllChildren(ui.accountRow);
@@ -249,16 +249,16 @@ function renderPlayAccount(): void {
 }
 
 export function bindAccountCard(): void {
-  card.submit.onclick = submit;
+  card.submit.onclick = trusted(submit);
   hookTouchEvents(card.submit);
-  card.close.onclick = closeAccountCard;
+  card.close.onclick = trusted(closeAccountCard);
   hookTouchEvents(card.close);
 
   for (const input of [card.email, card.code, card.password]) {
-    input.addEventListener("keydown", (event) => {
+    input.addEventListener("keydown", trusted((event: KeyboardEvent) => {
       if ((event.which || event.keyCode) === 13) submit();
       event.stopPropagation();
-    });
+    }));
   }
 
   card.code.addEventListener("input", () => {
@@ -266,7 +266,7 @@ export function bindAccountCard(): void {
     if (codeSession && !passwordMode && card.code.value.length === CODE_LENGTH) submit();
   });
 
-  ui.signInButton.onclick = () => openAccountCard();
+  ui.signInButton.onclick = trusted(() => openAccountCard());
   hookTouchEvents(ui.signInButton);
 
   auth.onAuthChange(renderPlayAccount);
